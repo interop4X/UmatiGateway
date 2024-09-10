@@ -1,0 +1,45 @@
+﻿@page
+@model UmatiGateway.Pages.OPCConnectionModel
+@{
+    ViewData["Title"] = "OPC Connection";
+}
+<h1>OPC Connection</h1>
+
+<p>Configure the connection to the OPC Server.</p>
+<form method="post">
+    <table>
+        <tr>
+            <td align="left" width="140px"><label for="OPCConnection">@Model.LabelConnectionUrl</label></td>
+            <td align="left"><input id="OPCConnection" size="60" type="text" name="ConnectionUrl" value="@Model.ConnectionUrl"></td>
+        </tr>
+        <tr>
+            <td></td>
+            <td align="right">
+                <button asp-page-handler="Connect" class="button">Connect</button>
+                <button asp-page-handler="Disconnect" class="button">Disconnect</button>
+            </td>
+        </tr>
+</table>
+</form>
+<p></p>
+<form method="post">
+    <table>
+        <tr>
+            <td align="left" width="140px"><label for="SessionId">@Model.LabelSessionId</label></td>
+            <td align="left"><input id="SessionId" type="text" size="60" value="@Model.SessionId" readonly/></td>
+        </tr>
+        <tr>
+            <td align="left" width="140px"><label for="OPCSessionName">@Model.LabelOPCSessionName</label></td>
+            <td align="left"><input id="OPCSessionIdName" type="text" size="60" value="@Model.OPCSessionName" readonly/></td>
+        </tr>
+        <tr>
+            <td align="left" width="140px"><label for="OPCSessionId">@Model.LabelOPCSessionId</label></td>
+            <td align="left"><input id="OPCSessionId" type="text" size="60" value="@Model.OPCSessionId" readonly/></td>
+        </tr>
+        <tr>
+            <td align="left" width="140px"><label for="ConnectionStatus">@Model.LabelConnectionStatus</label></td>
+            <td align="left"><input id="ConnectionStatus" type="text" size="60" value="@Model.ConnectionStatus" readonly/></td>
+        </tr>
+    </table>
+</form>
+
