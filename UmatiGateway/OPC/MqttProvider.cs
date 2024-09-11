@@ -783,8 +783,12 @@ namespace UmatiGateway.OPC{
                                     }
                                     if (field.TypeName == "tns:ForceCurveDataType")
                                     {
-                                        ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
-                                        jObject.Add(field.Name, decode(etoValue));
+                                        GeneratedDataTypeDefinition generatedDataTypeDefinition2 = new GeneratedDataTypeDefinition(generatedDataTypeDefinition.nameSpace, field.TypeName.Substring(4));
+                                        gclasses.TryGetValue(generatedDataTypeDefinition2, out GeneratedDataClass? gdc2);
+                                        if (gdc2 != null)
+                                        {
+                                            jObject.Add(field.Name, this.decode(BinaryDecoder, gdc2));
+                                        }
                                     }
                                     if (field.TypeName == "ua:XVType")
                                     {
@@ -804,6 +808,158 @@ namespace UmatiGateway.OPC{
 
                     }
                     //jObject.Add("Value", value.ToString());
+                }
+            }
+            return jObject;
+        }
+        public JObject decode(BinaryDecoder BinaryDecoder, GeneratedDataClass gdc)
+        {
+            JObject jObject = new JObject();
+            if (gdc != null)
+            {
+                if (gdc is GeneratedStructure)
+                {
+                    GeneratedStructure generatedStructure = (GeneratedStructure)gdc;
+                    Int32 previousInt32 = 0;
+                    UInt32 mask = 0;
+                    Int32 currentSwitchBit = 0;
+                    bool lastFieldWasSwitchedOff = false;
+                    foreach (GeneratedField field in generatedStructure.fields)
+                    {
+                        if (field.IsLengthField == true)
+                        {
+                            if (lastFieldWasSwitchedOff)
+                            {
+                                lastFieldWasSwitchedOff = false;
+                                continue;
+
+                            }
+                            if (field.TypeName == "ua:Variant")
+                            {
+                                Variant[] v = new Variant[previousInt32];
+                                JArray array = new JArray();
+                                for (int i = 0; i < previousInt32; i++)
+                                {
+                                    if (field.TypeName == "ua:Variant")
+                                    {
+                                        v[i] = BinaryDecoder.ReadVariant(field.Name);
+                                        array.Add(decode(v[i]));
+                                    }
+                                }
+                                jObject.Add(field.Name, array);
+                            }
+                            if (field.TypeName == "ua:XVType")
+                            {
+                                ExtensionObject[] etos = new ExtensionObject[previousInt32];
+                                JArray array = new JArray();
+                                for (int i = 0; i < previousInt32; i++)
+                                {
+                                    if (field.TypeName == "ua:XVType")
+                                    {
+                                        etos[i] = BinaryDecoder.ReadExtensionObject(field.Name);
+                                        array.Add(decode(etos[i]));
+                                    }
+                                }
+                                jObject.Add(field.Name, array);
+                            }
+                        }
+                        else
+                        {
+                            if (field.IsSwitchField)
+                            {
+                                bool optionalFieldPresent = this.IsBitSet(mask, currentSwitchBit);
+                                currentSwitchBit++;
+                                if (!optionalFieldPresent)
+                                {
+                                    lastFieldWasSwitchedOff = true;
+                                    continue;
+                                }
+                                else
+                                {
+                                    lastFieldWasSwitchedOff = false;
+                                }
+                            }
+                            else
+                            {
+                                lastFieldWasSwitchedOff = false;
+                            }
+
+                            if (field.TypeName == "opc:Bit" && !field.HasLength)
+                            {
+                                continue;
+                            }
+                            if (field.TypeName == "opc:Bit" && field.HasLength)
+                            {
+                                mask = BinaryDecoder.ReadUInt32("EncodingMask");
+                            }
+                            if (field.TypeName == "opc:CharArray")
+                            {
+                                String valueString = BinaryDecoder.ReadString(field.Name);
+                                jObject.Add(field.Name, valueString);
+                            }
+
+                            if (field.TypeName == "opc:Boolean")
+                            {
+                                Boolean valueBoolean = BinaryDecoder.ReadBoolean(field.Name);
+                                jObject.Add(field.Name, valueBoolean);
+                            }
+
+                            if (field.TypeName == "ua:ExtensionObject")
+                            {
+                                ExtensionObject valueEto = BinaryDecoder.ReadExtensionObject(field.Name);
+                                jObject.Add(field.Name, decode(valueEto));
+                            }
+                            if (field.TypeName == "opc:Int32")
+                            {
+                                Int32 valueInt32 = BinaryDecoder.ReadInt32(field.Name);
+                                jObject.Add(field.Name, valueInt32);
+                                previousInt32 = valueInt32;
+                            }
+                            if (field.TypeName == "opc:DateTime")
+                            {
+                                DateTime dateTimeValue = BinaryDecoder.ReadDateTime(field.Name);
+                                jObject.Add(field.Name, dateTimeValue.ToString());
+                            }
+                            if (field.TypeName == "opc:Int64")
+                            {
+                                Int64 int64Value = BinaryDecoder.ReadInt64(field.Name);
+                                jObject.Add(field.Name, int64Value.ToString());
+                            }
+                            if (field.TypeName == "ua:LocalizedText")
+                            {
+                                LocalizedText localizedTextValue = BinaryDecoder.ReadLocalizedText(field.Name);
+                                jObject.Add(field.Name, localizedTextValue.ToString());
+                            }
+                            if (field.TypeName == "opc:Double")
+                            {
+                                Double doubleValue = BinaryDecoder.ReadDouble(field.Name);
+                                jObject.Add(field.Name, doubleValue.ToString());
+                            }
+                            if (field.TypeName == "tns:ResultEvaluationEnum")
+                            {
+                                Int32 int32Value = BinaryDecoder.ReadInt32(field.TypeName);
+                                jObject.Add(field.Name, int32Value);
+                            }
+                            /*if (field.TypeName == "tns:ForceCurveDataType")
+                            {
+                                GeneratedDataTypeDefinition generatedDataTypeDefinition2 = new GeneratedDataTypeDefinition(generatedDataTypeDefinition.nameSpace, field.TypeName.Substring(4));
+                                gclasses.TryGetValue(generatedDataTypeDefinition2, out GeneratedDataClass? gdc2);
+
+                                ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
+                                jObject.Add(field.Name, decode(etoValue));
+                            }*/
+                            if (field.TypeName == "ua:XVType")
+                            {
+                                ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
+                                jObject.Add(field.Name, decode(etoValue));
+                            }
+                            if (field.TypeName == "ua:EUInformation")
+                            {
+                                ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
+                                jObject.Add(field.Name, decode(etoValue));
+                            }
+                        }
+                    }
                 }
             }
             return jObject;
