@@ -98,6 +98,11 @@ namespace UmatiGateway.OPC
             string? BaseType = null;
             string documentation = "";
             string? targetNamespace = null;
+            string? xsi = null;
+            string? tns = null;
+            string? DefaultByteorder = null;
+            string? opc = null;
+            string? ua = null;
             while (reader.Read())
             {
                 switch (reader.NodeType)
@@ -206,6 +211,12 @@ namespace UmatiGateway.OPC
                                 {
                                     this.errorMemmory.Add("The TargetNameSpace for the Typedictionary is null.");
                                 }
+                                xsi = reader.GetAttribute("xmlns:xsi");
+                                tns = reader.GetAttribute("xmlns:tns");
+                                DefaultByteorder = reader.GetAttribute("DefaultByteOrder");
+                                opc = reader.GetAttribute("xmlns:opc");
+                                ua = reader.GetAttribute("xmlns:ua");
+
                                 break;
                             case ("opc:Import"):
                                 break;
@@ -225,7 +236,14 @@ namespace UmatiGateway.OPC
                             case ("opc:StructuredType"):
                                 if (targetNamespace != null)
                                 {
-                                    this.generatedDataTypes.Add(new GeneratedDataTypeDefinition(targetNamespace, generatedStructure.Name), generatedStructure);
+                                    GeneratedDataTypeDefinition gdd = new GeneratedDataTypeDefinition(targetNamespace, generatedStructure.Name);
+                                    gdd.xsi = xsi;
+                                    gdd.tns = tns;
+                                    gdd.DefaultByteOrder = DefaultByteorder;
+                                    gdd.opc = opc;
+                                    gdd.ua = ua;
+                                    generatedStructure.DataTypeDefinition = gdd;
+                                    this.generatedDataTypes.Add(gdd, generatedStructure);
                                 }
                                 break;
                         }
@@ -488,6 +506,12 @@ namespace UmatiGateway.OPC
     {
         public string nameSpace;
         public string name;
+        public string? xsi = null;
+        public string? DefaultByteOrder = null;
+        public string? opc = null;
+        public string? ua = null;
+        public string? tns = null;
+
         public GeneratedDataTypeDefinition(string nameSpace, string name)
         {
             this.nameSpace = nameSpace;
@@ -510,6 +534,7 @@ namespace UmatiGateway.OPC
     }
     public class GeneratedDataClass
     {
+        public GeneratedDataTypeDefinition? DataTypeDefinition = null;
         public string Name = "";
         public GeneratedDataClass()
         {

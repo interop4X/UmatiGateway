@@ -545,79 +545,7 @@ namespace UmatiGateway.OPC{
         {
 
         }
-        public JObject generalDecodeExtensionObject(JObject obj, ExtensionObject eto)
-        {
-            JObject jObject = new JObject();
-            jObject.Add("TypeId", eto.TypeId.ToString());
-            NodeId etoId = ExpandedNodeId.ToNodeId(eto.TypeId, this.client.GetNamespaceTable());
-            NodeId dataType = this.client.BrowseLocalNodeId(etoId , BrowseDirection.Inverse, (uint)NodeClass.DataType, ReferenceTypeIds.HasEncoding, true);
-            Dictionary<NodeId, Node> dataTypes = this.client.TypeDictionaries.GetDataTypes();
-            NodeId search = dataType;
-            bool success = dataTypes.TryGetValue(search, out Node? value);
-            if(!success)
-            {
-                if (value != null)
-                {
-                    //this.client.TypeDictionaries.generatedDataTypes.TryGetValue();
-                    jObject.Add("Error", "Unable to get TypeInformation.");
-                }
-            } else
-            {
-                if (value != null)
-                {
-                    Dictionary < GeneratedDataTypeDefinition, GeneratedDataClass > gclasses = this.client.TypeDictionaries.generatedDataTypes;
-                    DataTypeNode dtn = (DataTypeNode) value;
-                    GeneratedDataTypeDefinition generatedDataTypeDefinition = new GeneratedDataTypeDefinition(this.client.GetNamespaceTable().GetString(dtn.NodeId.NamespaceIndex), dtn.BrowseName.Name);
-                    gclasses.TryGetValue(generatedDataTypeDefinition, out GeneratedDataClass? gdc);
-                    ExtensionObject dtd = dtn.DataTypeDefinition;
-                    jObject.Add("Success", "Found TypeInformation.");
-                    if (gdc != null)
-                    {
-                        BinaryDecoder BinaryDecoder = new BinaryDecoder((byte[])eto.Body, ServiceMessageContext.GlobalContext);
-                        if(gdc is GeneratedStructure)
-                        {
-                            GeneratedStructure generatedStructure = (GeneratedStructure)gdc;
-                            Int32 previousInt32 = 0;
-                            foreach(GeneratedField field in generatedStructure.fields)
-                            {
-                                if (field.IsLengthField == true)
-                                {
-                                    if (field.TypeName == "ua:Variant")
-                                    {
-                                        Variant[] v = new Variant[previousInt32];
-                                        for (int i = 0; i < previousInt32; i++)
-                                        {
-                                            if (field.TypeName == "ua:Variant")
-                                            {
-                                                v[i] = BinaryDecoder.ReadVariant(field.Name);
-                                            }
-                                        }
-                                    }
-                                    jObject.Add(field.Name, value.ToString());
-                                } else
-                                {
-                                    if (field.TypeName == "ua:ExtensionObject")
-                                    {
-                                        ExtensionObject valueEto = BinaryDecoder.ReadExtensionObject(field.Name);
-                                        jObject.Add(field.Name, valueEto.ToString());
-                                    }
-                                    if (field.TypeName == "opc:Int32")
-                                    {
-                                        Int32 valueInt32 = BinaryDecoder.ReadInt32(field.Name);
-                                        jObject.Add(field.Name, valueInt32);
-                                        previousInt32 = valueInt32;
-                                    }
-                                }
-
-                            }
-                        }
-
-                    }
-                    jObject.Add("Value", value.ToString());
-                }
-            }
-            return jObject;
-        }
+        
         public JObject decode( Object obj)
         {
             JObject jObject = new JObject();
@@ -705,6 +633,44 @@ namespace UmatiGateway.OPC{
                                         }
                                         jObject.Add(field.Name, array);
                                     }
+                                    if (field.TypeName == "ua:KeyValuePair")
+                                    {
+                                        JArray array = new JArray();
+                                        for (int i = 0; i < previousInt32; i++)
+                                        {
+                                            if (field.TypeName.StartsWith("ua:"))
+                                            {
+                                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.ua != null)
+                                                {
+                                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.ua, field.TypeName.Substring(3));
+                                                    if (gdc2 != null)
+                                                    {
+                                                        array.Add(decode(BinaryDecoder, gdc2));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        jObject.Add(field.Name, array);
+                                    }
+                                    if (field.TypeName.StartsWith("tns:"))
+                                    {
+                                        JArray array = new JArray();
+                                        for (int i = 0; i < previousInt32; i++)
+                                        {
+                                            if (field.TypeName.StartsWith("tns:"))
+                                            {
+                                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
+                                                {
+                                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
+                                                    if (gdc2 != null)
+                                                    {
+                                                        array.Add(decode(BinaryDecoder, gdc2));
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        jObject.Add(field.Name, array);
+                                    }
                                 }
                                 else
                                 {
@@ -781,13 +747,24 @@ namespace UmatiGateway.OPC{
                                         Int32 int32Value = BinaryDecoder.ReadInt32(field.TypeName);
                                         jObject.Add(field.Name, int32Value);
                                     }
-                                    if (field.TypeName == "tns:ForceCurveDataType")
+                                    /*if (field.TypeName == "tns:ForceCurveDataType")
                                     {
                                         GeneratedDataTypeDefinition generatedDataTypeDefinition2 = new GeneratedDataTypeDefinition(generatedDataTypeDefinition.nameSpace, field.TypeName.Substring(4));
                                         gclasses.TryGetValue(generatedDataTypeDefinition2, out GeneratedDataClass? gdc2);
                                         if (gdc2 != null)
                                         {
                                             jObject.Add(field.Name, this.decode(BinaryDecoder, gdc2));
+                                        }
+                                    }*/
+                                    if (field.TypeName.StartsWith("tns:") && field.TypeName != "tns:ResultEvaluationEnum")
+                                    {
+                                        if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
+                                        {
+                                            GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
+                                            if (gdc2 != null)
+                                            {
+                                                jObject.Add(field.Name, decode(BinaryDecoder, gdc2));
+                                            }
                                         }
                                     }
                                     if (field.TypeName == "ua:XVType")
@@ -811,6 +788,13 @@ namespace UmatiGateway.OPC{
                 }
             }
             return jObject;
+        }
+        public GeneratedDataClass? GetGeneratedDataClass(string namespaceurl, string browsename)
+        {
+            Dictionary<GeneratedDataTypeDefinition, GeneratedDataClass> gclasses = this.client.TypeDictionaries.generatedDataTypes;
+            GeneratedDataTypeDefinition generatedDataTypeDefinition = new GeneratedDataTypeDefinition(namespaceurl, browsename);
+            gclasses.TryGetValue(generatedDataTypeDefinition, out GeneratedDataClass? gdc);
+            return gdc;
         }
         public JObject decode(BinaryDecoder BinaryDecoder, GeneratedDataClass gdc)
         {
@@ -847,17 +831,57 @@ namespace UmatiGateway.OPC{
                                     }
                                 }
                                 jObject.Add(field.Name, array);
-                            }
-                            if (field.TypeName == "ua:XVType")
+                            } else if (field.TypeName == "ua:XVType")
                             {
-                                ExtensionObject[] etos = new ExtensionObject[previousInt32];
                                 JArray array = new JArray();
                                 for (int i = 0; i < previousInt32; i++)
                                 {
-                                    if (field.TypeName == "ua:XVType")
+                                    if (field.TypeName.StartsWith("ua:"))
                                     {
-                                        etos[i] = BinaryDecoder.ReadExtensionObject(field.Name);
-                                        array.Add(decode(etos[i]));
+                                        if(gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.ua != null)
+                                        {
+                                            GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.ua, field.TypeName.Substring(3));
+                                            if (gdc2 != null) {
+                                                array.Add(decode(BinaryDecoder, gdc2));
+                                            }
+                                        }   
+                                    }
+                                }
+                                jObject.Add(field.Name, array);
+                            } else if (field.TypeName.StartsWith("ua:"))
+                            {
+                                JArray array = new JArray();
+                                for (int i = 0; i < previousInt32; i++)
+                                {
+                                    if (field.TypeName.StartsWith("ua:"))
+                                    {
+                                        if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.ua != null)
+                                        {
+                                            GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.ua, field.TypeName.Substring(3));
+                                            if (gdc2 != null)
+                                            {
+                                                array.Add(decode(BinaryDecoder, gdc2));
+                                            }
+                                        }
+                                    }
+                                }
+                                jObject.Add(field.Name, array);
+                            }
+                            if (field.TypeName.StartsWith("tns:"))
+                            {
+                                JArray array = new JArray();
+                                for (int i = 0; i < previousInt32; i++)
+                                {
+                                    if (field.TypeName.StartsWith("tns:"))
+                                    {
+                                        if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
+                                        {
+                                            GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
+                                            if (gdc2 != null)
+                                            {
+                                                array.Add(decode(BinaryDecoder, gdc2));
+                                            }
+                                        }
                                     }
                                 }
                                 jObject.Add(field.Name, array);
@@ -897,6 +921,11 @@ namespace UmatiGateway.OPC{
                                 String valueString = BinaryDecoder.ReadString(field.Name);
                                 jObject.Add(field.Name, valueString);
                             }
+                            if (field.TypeName == "opc:String")
+                            {
+                                String valueString = BinaryDecoder.ReadString(field.Name);
+                                jObject.Add(field.Name, valueString);
+                            }
 
                             if (field.TypeName == "opc:Boolean")
                             {
@@ -904,11 +933,11 @@ namespace UmatiGateway.OPC{
                                 jObject.Add(field.Name, valueBoolean);
                             }
 
-                            if (field.TypeName == "ua:ExtensionObject")
+                            /*if (field.TypeName == "ua:ExtensionObject")
                             {
                                 ExtensionObject valueEto = BinaryDecoder.ReadExtensionObject(field.Name);
                                 jObject.Add(field.Name, decode(valueEto));
-                            }
+                            }*/
                             if (field.TypeName == "opc:Int32")
                             {
                                 Int32 valueInt32 = BinaryDecoder.ReadInt32(field.Name);
@@ -925,6 +954,11 @@ namespace UmatiGateway.OPC{
                                 Int64 int64Value = BinaryDecoder.ReadInt64(field.Name);
                                 jObject.Add(field.Name, int64Value.ToString());
                             }
+                            if (field.TypeName == "opc:UInt16")
+                            {
+                                UInt16 uint16Value = BinaryDecoder.ReadUInt16(field.Name);
+                                jObject.Add(field.Name, uint16Value.ToString());
+                            }
                             if (field.TypeName == "ua:LocalizedText")
                             {
                                 LocalizedText localizedTextValue = BinaryDecoder.ReadLocalizedText(field.Name);
@@ -937,7 +971,7 @@ namespace UmatiGateway.OPC{
                             }
                             if (field.TypeName == "tns:ResultEvaluationEnum")
                             {
-                                Int32 int32Value = BinaryDecoder.ReadInt32(field.TypeName);
+                                Int32 int32Value = BinaryDecoder.ReadInt32(field.Name);
                                 jObject.Add(field.Name, int32Value);
                             }
                             /*if (field.TypeName == "tns:ForceCurveDataType")
@@ -948,15 +982,37 @@ namespace UmatiGateway.OPC{
                                 ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
                                 jObject.Add(field.Name, decode(etoValue));
                             }*/
-                            if (field.TypeName == "ua:XVType")
+                            if(field.TypeName == "ua:Variant")
                             {
-                                ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
-                                jObject.Add(field.Name, decode(etoValue));
+                                Variant v = BinaryDecoder.ReadVariant(field.Name);
+
                             }
-                            if (field.TypeName == "ua:EUInformation")
+                            if (field.TypeName.StartsWith("ua:") && field.TypeName != "ua:LocalizedText" && field.TypeName != "ua:Variant")
                             {
-                                ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
-                                jObject.Add(field.Name, decode(etoValue));
+                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.ua != null)
+                                {
+                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.ua, field.TypeName.Substring(3));
+                                    if (gdc2 != null)
+                                    {
+                                            jObject.Add(field.Name, decode(BinaryDecoder, gdc2));
+                                    }
+                                }
+                            }
+                            if (field.TypeName.StartsWith("tns:") && field.TypeName != "tns:ResultEvaluationEnum")
+                            {
+                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
+                                {
+                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
+                                    if (gdc2 != null)
+                                    {
+                                        jObject.Add(field.Name, decode(BinaryDecoder, gdc2));
+                                    }
+                                }
+                            }
+                            if (field.TypeName == "opc:Float")
+                            {
+                                float floatValue = BinaryDecoder.ReadFloat(field.Name);
+                                jObject.Add(field.Name, floatValue.ToString());
                             }
                         }
                     }
