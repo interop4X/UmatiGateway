@@ -142,14 +142,45 @@ namespace UmatiGateway.OPC{
                 Console.Out.WriteLine("The MqttClient is null");
             }
         }
-        public void WriteMessage() {
+
+        public JObject SortJsonKeysRecursively(JObject jsonObj)
+        {
+            // Erstelle ein neues JObject mit sortierten Keys
+            JObject sortedJsonObj = new JObject(
+                jsonObj.Properties()
+                       .OrderBy(p => p.Name)
+                       .Select(p => new JProperty(p.Name, SortToken(p.Value)))
+            );
+            return sortedJsonObj;
         }
+        // Methode, um die Sortierung je nach Token-Typ (JObject, JArray oder JValue) rekursiv anzuwenden
+        public JToken SortToken(JToken token)
+        {
+            if (token is JObject)
+            {
+                // Sortiere rekursiv, wenn es sich um ein JObject handelt
+                return SortJsonKeysRecursively((JObject)token);
+            }
+            else if (token is JArray)
+            {
+                // Für Arrays: Überprüfe, ob die einzelnen Elemente sortiert werden müssen
+                var array = (JArray)token;
+                return new JArray(array.Select(SortToken));
+            }
+            else
+            {
+                // Wenn es sich um einen Wert (JValue) handelt, bleibt der Wert gleich
+                return token;
+            }
+        }
+
         public bool WriteMessage(JObject jObject, string machineId) {
             try {
+                JObject sortedJsonObj = this.SortJsonKeysRecursively(jObject);
                 string MyTopic = this.mqttPrefix + "/" + this.clientId + "/" + "WireHarnessMachineType" + "/" + machineId;
                 MqttApplicationMessage applicationMessage = new MqttApplicationMessageBuilder()
                 .WithTopic(MyTopic)
-                .WithPayload(jObject.ToString(Newtonsoft.Json.Formatting.Indented))
+                .WithPayload(sortedJsonObj.ToString(Newtonsoft.Json.Formatting.Indented))
                 .Build();
                 if(this.mqttClient != null) {
                     _ = this.mqttClient.PublishAsync(applicationMessage, CancellationToken.None).Result;
@@ -276,7 +307,7 @@ namespace UmatiGateway.OPC{
                 this.connected = false;
             }
         }
-        private void createJSON(JObject jObject, NodeId nodeId)
+        private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
         {
             List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HasChild, true);
             foreach (NodeId child in hierarchicalChilds)
@@ -284,9 +315,10 @@ namespace UmatiGateway.OPC{
                 Node? childNode = this.client.ReadNode(child);
                 if (childNode != null)
                 {
-                    String browseName = childNode.BrowseName.ToString();
+                    //String browseName = childNode.BrowseName.ToString();
+                    String browseName = childNode.BrowseName.Name.ToString();
                     JObject childObject = new JObject();
-                    createJSON(childObject, child);
+                    createJSON(childObject, child, nodeId);
                     if (childNode.NodeClass == NodeClass.Object)
                     {
                         jObject.Add(browseName, childObject);
@@ -294,47 +326,48 @@ namespace UmatiGateway.OPC{
                     if (childNode.NodeClass == NodeClass.Variable)
                     {
                         object dataValue = getDataValueAsObject(child);
-                        if (dataValue is string) {
-                            jObject.Add(browseName, (string)dataValue);
-                        } else if (dataValue is JObject)
+                        bool isProperty = false;
+                        if (this.client.getTypeDefinition(child) == VariableTypeIds.PropertyType)
                         {
-                            jObject.Add(browseName, (JObject)dataValue);
-                        } else if (dataValue is JArray)
+                            isProperty = true;
+                        }
+                        if(isProperty)
                         {
-                            jObject.Add(browseName, (JArray)dataValue);
+                            if (dataValue is string)
+                            {
+                                jObject.Add(browseName, (string)dataValue);
+                            }
+                            else if (dataValue is JObject)
+                            {
+                                jObject.Add(browseName, (JObject)dataValue);
+                            }
+                            else if (dataValue is JArray)
+                            {
+                                jObject.Add(browseName, (JArray)dataValue);
+                            }
+                        } else
+                        {
+                            JObject valueObject = new JObject();
+                            if (dataValue is string)
+                            {
+                                valueObject.Add("value", (string)dataValue);
+                            }
+                            else if (dataValue is JObject)
+                            {
+                                valueObject.Add("value", (JObject)dataValue);
+                            }
+                            else if (dataValue is JArray)
+                            {
+                                valueObject.Add("value", (JArray)dataValue);
+                            }
+                            valueObject.Add("properties", childObject);
+                            jObject.Add(browseName, valueObject);
                         }
                     }
                 }
                 
             }
 
-            /*Object obj = getDataValueAsObject(nodeId);
-            Node? node = this.client.ReadNode(nodeId);
-            if (node != null) {
-                
-                if (obj is String)
-                {
-
-                    if (!jObject.ContainsKey(browseName))
-                    {
-                        jObject.Add(browseName, (string)obj);
-                    }
-                }
-                else if (obj is JObject)
-                {
-                    if (!jObject.ContainsKey(browseName))
-                    {
-                        jObject.Add(browseName, (JObject)obj);
-                    }
-                }
-                else if (obj is JArray)
-                {
-                    if (!jObject.ContainsKey(browseName))
-                    {
-                        jObject.Add(browseName, (JArray)obj);
-                    }
-                }
-            }*/
         }
         public bool publishIdentification(List<StructuredNode> onlineMachines) {
             if (!this.subscriptionscreated) {
@@ -551,17 +584,24 @@ namespace UmatiGateway.OPC{
             JObject jObject = new JObject();
             return jObject;
         }
-        public JObject decode(Variant variant)
+
+        public object decode(Variant variant)
         {
             JObject jObject = new JObject();
-            ExtensionObject? eto = variant.Value as ExtensionObject;
-            if (eto != null) { jObject.Add("Vale", decode(eto)); }
+            object obj = variant.Value;
+            if(obj is String)
+            {
+                return (String)obj;
+            } else if (obj is ExtensionObject)
+            {
+                return decode((ExtensionObject)obj);
+            }
             return jObject;
         }
         public JObject decode(ExtensionObject eto)
         {
             JObject jObject = new JObject();
-            jObject.Add("TypeId", eto.TypeId.ToString());
+            //jObject.Add("TypeId", eto.TypeId.ToString());
             NodeId etoId = ExpandedNodeId.ToNodeId(eto.TypeId, this.client.GetNamespaceTable());
             NodeId dataType = this.client.BrowseLocalNodeId(etoId, BrowseDirection.Inverse, (uint)NodeClass.DataType, ReferenceTypeIds.HasEncoding, true);
             Dictionary<NodeId, Node> dataTypes = this.client.TypeDictionaries.GetDataTypes();
@@ -571,7 +611,6 @@ namespace UmatiGateway.OPC{
             {
                 if (value != null)
                 {
-                    //this.client.TypeDictionaries.generatedDataTypes.TryGetValue();
                     jObject.Add("Error", "Unable to get TypeInformation.");
                 }
             }
@@ -584,199 +623,11 @@ namespace UmatiGateway.OPC{
                     GeneratedDataTypeDefinition generatedDataTypeDefinition = new GeneratedDataTypeDefinition(this.client.GetNamespaceTable().GetString(dtn.NodeId.NamespaceIndex), dtn.BrowseName.Name);
                     gclasses.TryGetValue(generatedDataTypeDefinition, out GeneratedDataClass? gdc);
                     ExtensionObject dtd = dtn.DataTypeDefinition;
-                    //jObject.Add("Success", "Found TypeInformation.");
                     if (gdc != null)
                     {
                         BinaryDecoder BinaryDecoder = new BinaryDecoder((byte[])eto.Body, ServiceMessageContext.GlobalContext);
-                        this.decode(BinaryDecoder, gdc);
-                        /*if (gdc is GeneratedStructure)
-                        {
-                            GeneratedStructure generatedStructure = (GeneratedStructure)gdc;
-                            Int32 previousInt32 = 0;
-                            UInt32 mask = 0;
-                            Int32 currentSwitchBit = 0;
-                            bool lastFieldWasSwitchedOff = false;
-                            foreach (GeneratedField field in generatedStructure.fields)
-                            {
-                                if (field.IsLengthField == true)
-                                {
-                                    if (lastFieldWasSwitchedOff)
-                                    {
-                                        lastFieldWasSwitchedOff = false;
-                                        continue;
-                                        
-                                    }
-                                    if (field.TypeName == "ua:Variant")
-                                    {
-                                        Variant[] v = new Variant[previousInt32];
-                                        JArray array = new JArray();
-                                        for (int i = 0; i < previousInt32; i++)
-                                        {
-                                            if (field.TypeName == "ua:Variant")
-                                            {
-                                                v[i] = BinaryDecoder.ReadVariant(field.Name);
-                                                array.Add(decode(v[i]));
-                                            }
-                                        }
-                                        jObject.Add(field.Name, array);
-                                    }
-                                    if (field.TypeName == "ua:XVType")
-                                    {
-                                        ExtensionObject[] etos = new ExtensionObject[previousInt32];
-                                        JArray array = new JArray();
-                                        for (int i = 0; i < previousInt32; i++)
-                                        {
-                                            if (field.TypeName == "ua:XVType")
-                                            {
-                                                etos[i] = BinaryDecoder.ReadExtensionObject(field.Name);
-                                                array.Add(decode(etos[i]));
-                                            }
-                                        }
-                                        jObject.Add(field.Name, array);
-                                    }
-                                    if (field.TypeName == "ua:KeyValuePair")
-                                    {
-                                        JArray array = new JArray();
-                                        for (int i = 0; i < previousInt32; i++)
-                                        {
-                                            if (field.TypeName.StartsWith("ua:"))
-                                            {
-                                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.ua != null)
-                                                {
-                                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.ua, field.TypeName.Substring(3));
-                                                    if (gdc2 != null)
-                                                    {
-                                                        array.Add(decode(BinaryDecoder, gdc2));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        jObject.Add(field.Name, array);
-                                    }
-                                    if (field.TypeName.StartsWith("tns:"))
-                                    {
-                                        JArray array = new JArray();
-                                        for (int i = 0; i < previousInt32; i++)
-                                        {
-                                            if (field.TypeName.StartsWith("tns:"))
-                                            {
-                                                if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
-                                                {
-                                                    GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
-                                                    if (gdc2 != null)
-                                                    {
-                                                        array.Add(decode(BinaryDecoder, gdc2));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        jObject.Add(field.Name, array);
-                                    }
-                                }
-                                else
-                                {
-                                    if (field.IsSwitchField)
-                                    {
-                                        bool optionalFieldPresent = this.IsBitSet(mask, currentSwitchBit);
-                                        currentSwitchBit++;
-                                        if(!optionalFieldPresent)
-                                        {
-                                            lastFieldWasSwitchedOff = true;
-                                            continue;
-                                        } else
-                                        {
-                                            lastFieldWasSwitchedOff = false;
-                                        }
-                                    } else
-                                    {
-                                        lastFieldWasSwitchedOff = false;
-                                    }
-
-                                    if (field.TypeName == "opc:Bit" && !field.HasLength)
-                                    {
-                                        continue;
-                                    } else if (field.TypeName == "opc:Bit" && field.HasLength)
-                                    {
-                                        mask = BinaryDecoder.ReadUInt32("EncodingMask");
-                                    } else if (field.TypeName == "opc:Boolean")
-                                    {
-                                        Boolean valueBoolean = BinaryDecoder.ReadBoolean(field.Name);
-                                        jObject.Add(field.Name, valueBoolean);
-                                    }
-
-                                    if (field.TypeName == "opc:CharArray")
-                                    {
-                                        String valueString = BinaryDecoder.ReadString(field.Name);
-                                        jObject.Add(field.Name, valueString);
-                                    }
-
-                                    
-
-                                    if (field.TypeName == "ua:ExtensionObject")
-                                    {
-                                        ExtensionObject valueEto = BinaryDecoder.ReadExtensionObject(field.Name);
-                                        jObject.Add(field.Name, decode(valueEto));
-                                    }
-                                    if (field.TypeName == "opc:Int32")
-                                    {
-                                        Int32 valueInt32 = BinaryDecoder.ReadInt32(field.Name);
-                                        jObject.Add(field.Name, valueInt32);
-                                        previousInt32 = valueInt32;
-                                    }
-                                    if(field.TypeName == "opc:DateTime")
-                                    {
-                                        DateTime dateTimeValue = BinaryDecoder.ReadDateTime(field.Name);
-                                        jObject.Add(field.Name, dateTimeValue.ToString());
-                                    }
-                                    if (field.TypeName == "opc:Int64")
-                                    {
-                                        Int64 int64Value = BinaryDecoder.ReadInt64(field.Name);
-                                        jObject.Add(field.Name, int64Value.ToString());
-                                    }
-                                    if (field.TypeName == "ua:LocalizedText")
-                                    {
-                                        LocalizedText localizedTextValue = BinaryDecoder.ReadLocalizedText(field.Name);
-                                        jObject.Add(field.Name, localizedTextValue.ToString());
-                                    }
-                                    if (field.TypeName == "opc:Double")
-                                    {
-                                        Double doubleValue = BinaryDecoder.ReadDouble(field.Name);
-                                        jObject.Add(field.Name, doubleValue.ToString());
-                                    }
-                                    if (field.TypeName == "tns:ResultEvaluationEnum")
-                                    {
-                                        Int32 int32Value = BinaryDecoder.ReadInt32(field.TypeName);
-                                        jObject.Add(field.Name, int32Value);
-                                    }
-                                    if (field.TypeName.StartsWith("tns:") && field.TypeName != "tns:ResultEvaluationEnum")
-                                    {
-                                        if (gdc.DataTypeDefinition != null && gdc.DataTypeDefinition.tns != null)
-                                        {
-                                            GeneratedDataClass? gdc2 = this.GetGeneratedDataClass(gdc.DataTypeDefinition.tns, field.TypeName.Substring(4));
-                                            if (gdc2 != null)
-                                            {
-                                                jObject.Add(field.Name, decode(BinaryDecoder, gdc2));
-                                            }
-                                        }
-                                    }
-                                    if (field.TypeName == "ua:XVType")
-                                    {
-                                        ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
-                                        jObject.Add(field.Name, decode(etoValue));
-                                    }
-                                    if (field.TypeName == "ua:EUInformation")
-                                    {
-                                        ExtensionObject etoValue = BinaryDecoder.ReadExtensionObject(field.TypeName);
-                                        jObject.Add(field.Name, decode(etoValue));
-                                    }
-                                }
-                            }
-                               
-                 
-                        }*/
-
+                        jObject = this.decode(BinaryDecoder, gdc);
                     }
-                    //jObject.Add("Value", value.ToString());
                 }
             }
             return jObject;
@@ -966,7 +817,10 @@ namespace UmatiGateway.OPC{
                             else if (field.TypeName == "opc:Int32")
                             {
                                 Int32 valueInt32 = BinaryDecoder.ReadInt32(field.Name);
-                                jObject.Add(field.Name, valueInt32.ToString());
+                                if (!field.Name.StartsWith("NoOf"))
+                                {
+                                    jObject.Add(field.Name, valueInt32.ToString());
+                                }
                                 previousInt32 = valueInt32;
                                 Console.WriteLine("Value: " + valueInt32.ToString());
                             }
@@ -1017,10 +871,18 @@ namespace UmatiGateway.OPC{
                                 ExtensionObject valueEto = BinaryDecoder.ReadExtensionObject(field.Name);
                                 jObject.Add(field.Name, decode(valueEto));
                             }
-                            else if(field.TypeName == "ua:Variant")
+                            else if (field.TypeName == "ua:Variant")
                             {
                                 Variant v = BinaryDecoder.ReadVariant(field.Name);
-
+                                object value = decode(v);
+                                if (value is String)
+                                {
+                                    jObject.Add(field.Name, (String)value);
+                                }
+                                else if(value is JObject)
+                                {
+                                    jObject.Add(field.Name, (JObject)value);
+                                }
                             }
                             else if (field.TypeName.StartsWith("ua:") && field.TypeName != "ua:LocalizedText" && field.TypeName != "ua:Variant")
                             {
@@ -1061,444 +923,6 @@ namespace UmatiGateway.OPC{
             return jObject;
         }
 
-        public JObject decodeExtensionObject(ExtensionObject eto)
-        {
-            JObject jObject = new JObject();
-            //BinaryDecoder decoder = new BinaryDecoder((byte[])eto.Body, ServiceMessageContext.GlobalContext);
-            jObject.Add("TypeId", eto.TypeId.ToString());
-            return jObject;
-        }
-        public JObject decodeCrimpOutputType(ExtensionObject crimpOutput)
-        {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])crimpOutput.Body, ServiceMessageContext.GlobalContext);
-            UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-            bool hasActualCrimpHeigth = IsBitSet(encodingMask, 0);
-            bool hasActualCrimpWith = IsBitSet(encodingMask, 1);
-            bool hasActualCrimpForceCurve = IsBitSet(encodingMask, 2);
-            bool hasActualReferenceCrimpCurve = IsBitSet(encodingMask, 3);
-            bool hasActualInsulationCrimpHeight = IsBitSet(encodingMask, 4);
-            bool hasCrimpForceMonitoringResultDataSet = IsBitSet(encodingMask, 5);
-            bool hasMaximumCrimpForce = IsBitSet(encodingMask, 6);
-            bool hasActualCrimpPullOutForce = IsBitSet(encodingMask, 7);
-            jobj.Add("ToolInstance", decoder.ReadString("ToolInstance"));
-            jobj.Add("ProcessResult", decoder.ReadString("ProcessResult"));
-            jobj.Add("ProcessStartTime", decoder.ReadDouble("ProcessStartTime"));
-            jobj.Add("ProcessEndTime", decoder.ReadDouble("ProcessEndTime"));
-            jobj.Add("ProcessIdentifier", decoder.ReadString("ProcessIdentifier"));
-            jobj.Add("ProductIdentifier", decoder.ReadString("ProductIdentifier"));
-            if (hasActualCrimpHeigth) {
-                jobj.Add("ActualCrimpHeight", this.decodeValueUnitDataType(decoder));
-            }
-            if (hasActualCrimpWith)
-            {
-                jobj.Add("ActualCrimpWidth", this.decodeValueUnitDataType(decoder));
-            }
-            if (hasActualCrimpForceCurve)
-            {
-                jobj.Add("ActualCrimpForceCurve", this.decodeForceCurveDataType(decoder));
-            }
-            if (hasActualReferenceCrimpCurve)
-            {
-                jobj.Add("ActualReferenceCrinpCurve", this.decodeForceCurveDataType(decoder));
-            }
-            if(hasActualInsulationCrimpHeight)
-            {
-                jobj.Add("ActualInsulationCrimpHeight", this.decodeValueUnitDataType(decoder));
-            }
-            if(hasCrimpForceMonitoringResultDataSet)
-            {
-                jobj.Add("CrimpForceMonitoringResulDataSet", this.decodeKeyValuePairArray(decoder));
-            }
-            if(hasMaximumCrimpForce)
-            {
-                jobj.Add("MaximumCrimpForce", this.decodeValueUnitDataType(decoder));
-            }
-            if(hasActualCrimpPullOutForce)
-            {
-                jobj.Add("ActualCrimpPullOutForce", this.decodeValueUnitDataType(decoder));
-            }
-            return jobj;
-        }
-        private JArray decodeKeyValuePairArray(BinaryDecoder decoder)
-        {
-            JArray keyValuePairArray = new JArray();
-            UInt32 length = decoder.ReadUInt32("length");
-            for (int i = 0; i < length; i++)
-            {
-                keyValuePairArray.Add(this.decodeKeyValuePair(decoder));
-            }
-            return keyValuePairArray;
-        }
-
-        private JObject decodeKeyValuePair(BinaryDecoder decoder)
-        {
-            JObject keyValuePairObject = new JObject();
-            QualifiedName qualifiedName = decoder.ReadQualifiedName("Key");
-            keyValuePairObject.Add("Key", qualifiedName.NamespaceIndex + ":" + qualifiedName.Name);
-            Variant variant = decoder.ReadVariant("Value");
-            keyValuePairObject.Add("Value", variant.Value.ToString());
-            return keyValuePairObject;
-        }
-        private JObject decodeValueUnitDataType(BinaryDecoder decoder) {
-            JObject valueUnitDataTypeObject = new JObject();
-            valueUnitDataTypeObject.Add("Value", decoder.ReadDouble("Value"));
-            valueUnitDataTypeObject.Add("EngineeringUnits", this.decodeEUInformation(decoder));
-            return valueUnitDataTypeObject;
-        }
-        private JObject decodeForceCurveDataType(BinaryDecoder decoder) {
-            JObject forceCurveDataType = new JObject();
-            forceCurveDataType.Add("Points", this.decodeXVTypeArray(decoder));
-            forceCurveDataType.Add("EngineeringUnitsX", this.decodeEUInformation(decoder));
-            forceCurveDataType.Add("EngineeringUnitsValue", this.decodeEUInformation(decoder));
-            return forceCurveDataType;
-        }
-        private JArray decodeXVTypeArray(BinaryDecoder decoder)
-        {
-            JArray xvTypeArrayObject = new JArray();
-            UInt32 length = decoder.ReadUInt32("length");
-            for (int i = 0; i < length; i++)
-            {
-                xvTypeArrayObject.Add(this.decodeXVType(decoder));
-            }
-            return xvTypeArrayObject;
-        }
-        private JObject decodeXVType(BinaryDecoder decoder)
-        {
-            JObject xvTypeObject = new JObject();
-            xvTypeObject.Add("X", decoder.ReadDouble("X"));
-            xvTypeObject.Add("Value", decoder.ReadFloat("Value"));
-            return xvTypeObject;
-        }
-        private JObject decodeEUInformation(BinaryDecoder decoder) {
-            JObject EUInformationObject = new JObject();
-            EUInformationObject.Add("NamespaceUri", decoder.ReadString("NamespaceUri"));
-            EUInformationObject.Add("UnitId", decoder.ReadInt32("UnitId"));
-            EUInformationObject.Add("DisplayName", this.decodeLocalizedText(decoder));
-            EUInformationObject.Add("Description", this.decodeLocalizedText(decoder));
-            return EUInformationObject;
-        }
-        private JObject decodeLocalizedText(BinaryDecoder decoder)
-        {
-            LocalizedText localizedText = decoder.ReadLocalizedText("DisplayName");
-            JObject localizedTextObject = new JObject();
-            localizedTextObject.Add("locale", localizedText.Locale);
-            localizedTextObject.Add("text", localizedText.Text);
-            return localizedTextObject;
-        }
-        public JObject decodeJobOrderAndStatus(ExtensionObject jobOrderAndState)
-        {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])jobOrderAndState.Body, ServiceMessageContext.GlobalContext);
-            UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-            String jobOrderId = decoder.ReadString("JobOrderId");
-            UInt32 stateLength = decoder.ReadUInt32("Length");
-            UInt32 relativePathLength = decoder.ReadUInt32("Length");
-            for (int i = 0; i < relativePathLength; i++)
-            {
-                NodeId ReferenceTypeId = decoder.ReadNodeId("ReferencerypeId");
-                Boolean IsInverse = decoder.ReadBoolean("IsInverse");
-                Boolean IncludeSubTypes = decoder.ReadBoolean("IncludeSubTypes");
-                QualifiedName TargetName = decoder.ReadQualifiedName("QualifiedName");
-            }
-            LocalizedText localizedText = decoder.ReadLocalizedText("StateText");
-            UInt32 StateNumber = decoder.ReadUInt32("StateNumber");
-            jobj.Add("JobOrderId", jobOrderId);
-            jobj.Add("Browsepath", null);
-            JObject StateText = new JObject();
-            StateText.Add("locale", localizedText.Locale);
-            StateText.Add("text", localizedText.Text);
-            jobj.Add("StateText", StateText);
-            jobj.Add("StateNumber", StateNumber);
-            return jobj;
-        }
-        public JObject decodeJobOrder(ExtensionObject jobOrder)
-        {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])jobOrder.Body, ServiceMessageContext.GlobalContext);
-            UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-            String jobOrderId = decoder.ReadString("JobOrderId");
-            jobj.Add("JobOrderId", jobOrderId);
-            if(this.IsBitSet(encodingMask,0))
-            {
-                Opc.Ua.LocalizedText localizedText = decoder.ReadLocalizedText("Description");
-                JObject description = new JObject();
-                description.Add("locale", localizedText.Locale);
-                description.Add("text", localizedText.Text);
-                jobj.Add("Description", description);
-            }
-            if (this.IsBitSet(encodingMask, 1))
-            {
-                jobj.Add("WorkmasterId", decoder.ReadString("WorkmasterId"));
-            }
-
-            if (this.IsBitSet(encodingMask, 2))
-            {
-                jobj.Add("StartTime", decoder.ReadDateTime("StartTime"));
-            }
-            if (this.IsBitSet(encodingMask, 3))
-            {
-                jobj.Add("EndTime", decoder.ReadDateTime("EndTime"));
-            }
-            if (this.IsBitSet(encodingMask, 4))
-            {
-                jobj.Add("Priority", decoder.ReadUInt16("Priority"));
-            }
-            if (this.IsBitSet(encodingMask, 5))
-            {
-                jobj.Add("JobOrderParameters", decodeIsa95ParameterDataType(decoder));
-            }
-
-            return jobj;
-        }
-
-        public JObject decodeJobOrderResponse(ExtensionObject jobOrderResponse)
-        {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])jobOrderResponse.Body, ServiceMessageContext.GlobalContext);
-            UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-            String jobResponseId = decoder.ReadString("JobResponseId");
-            String jobOrderId = decoder.ReadString("JobOrderId");
-            UInt32 pathLength = decoder.ReadUInt32("Length");
-            UInt32 relativePathLength = decoder.ReadUInt32("Length");
-            for(int i = 0; i < relativePathLength; i++)
-            {
-                decoder.ReadNodeId("ReferenceTypeId");
-                decoder.ReadBoolean("IsInverse");
-                decoder.ReadBoolean("IncludeSubTypes");
-                decoder.ReadQualifiedName("TargetName");
-            }
-            Opc.Ua.LocalizedText localizedText = decoder.ReadLocalizedText("StateText");
-            UInt32 StateNumber = decoder.ReadUInt32("StateNumber");
-            jobj.Add("JobResponseId", jobResponseId);
-            jobj.Add("JobOrderId", jobOrderId);
-            jobj.Add("Browsepath", null);
-            JObject StateText = new JObject();
-            StateText.Add("locale", localizedText.Locale);
-            StateText.Add("text", localizedText.Text);
-            jobj.Add("StateText", StateText);
-            jobj.Add("StateNumber", StateNumber);
-            if (this.IsBitSet(encodingMask, 4))
-            {
-                jobj.Add("JobResponseData", decodeIsa95Parameter(decoder));
-            }
-            if (this.IsBitSet(encodingMask, 8))
-            {
-                jobj.Add("MaterialRequirements", decodeMaterialRequirements(decoder));
-            }
-            return jobj;
-        }
-        public JArray decodeMaterialRequirements(BinaryDecoder decoder)
-        {
-            JArray isaParameters = new JArray();
-            UInt32 length = decoder.ReadUInt32("length");
-            for (int i = 0; i < length; i++)
-            {
-                UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-                //TBD decode the Material DataType
-            }
-            return isaParameters;
-        }
-        public JArray decodeIsa95ParameterDataType(BinaryDecoder decoder)
-        {
-            JArray isaParameters = new JArray();
-            UInt32 length = decoder.ReadUInt32("length");
-            for (int i = 0; i < length; i++)
-            {
-                UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-                JObject obj = new JObject();
-                obj.Add("ID", decoder.ReadString("ID"));
-                obj.Add("Value", decoder.ReadVariant("Value").ToString());
-                isaParameters.Add(obj);
-                if(this.IsBitSet(encodingMask,0))
-                {
-                    Opc.Ua.LocalizedText localizedText = decoder.ReadLocalizedText("Description");
-                    JObject description = new JObject();
-                    description.Add("locale", localizedText.Locale);
-                    description.Add("text", localizedText.Text);
-                    obj.Add("Description", description);
-                }
-                if (this.IsBitSet(encodingMask, 1))
-                {
-                    obj.Add("EngineeringUnits", decodeEUInformation(decoder));
-                }
-                if (this.IsBitSet(encodingMask, 2))
-                {
-                    obj.Add("Subparameters", decodeIsa95ParameterDataType(decoder));
-                }
-            }
-            return isaParameters;
-        }
-        public JArray decodeIsa95Parameter(BinaryDecoder decoder)
-        {
-            JArray isaParameters = new JArray();
-            UInt32 length = decoder.ReadUInt32("length");
-            for (int i = 0; i < length; i++)
-            {
-                JObject obj = new JObject();
-                obj.Add("ID", decoder.ReadString("ID"));
-                obj.Add("Value", decoder.ReadVariant("Value").ToString());
-                isaParameters.Add(obj);
-            }
-            return isaParameters;
-        }
-        public JObject decodeResultContent(ExtensionObject resultContent) {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])resultContent.Body, ServiceMessageContext.GlobalContext);
-            jobj.Add("ResultKey", decoder.ReadString("ResultKey"));
-            jobj.Add("ItemCount", decoder.ReadUInt32("ItemCount"));
-            jobj.Add("MeanValue", decoder.ReadDouble("MeanValue"));
-            jobj.Add("StandardDeviation", decoder.ReadDouble("StandardDeviation"));
-            jobj.Add("CoefficientOfVariation", decoder.ReadDouble("CoefficientOfVariation"));
-            jobj.Add("MinValue", decoder.ReadDouble("MinValue"));
-            jobj.Add("MaxValue", decoder.ReadDouble("MaxValue"));
-            jobj.Add("ConfidenceInterval95", decoder.ReadDouble("ConfidenceInterval95"));
-            return jobj;
-        }
-        public JObject decodeResultMetaData(ExtensionObject resultMetaData) {
-            JObject jobj = new JObject();
-            BinaryDecoder decoder = new BinaryDecoder((byte[])resultMetaData.Body, ServiceMessageContext.GlobalContext);
-            UInt32 encodingMask = decoder.ReadUInt32("EncodingMask");
-            bool hasHasTransferableDataOnFile = this.IsBitSet(encodingMask, 0);
-            bool hasIsPartial = this.IsBitSet(encodingMask, 1);
-            bool hasIsSimulated = this.IsBitSet(encodingMask, 2);
-            bool hasResultState = this.IsBitSet(encodingMask, 3);
-            bool hasStepId = this.IsBitSet(encodingMask, 4);
-            bool hasPartId = this.IsBitSet(encodingMask, 5);
-            bool hasExternalRecipeId = this.IsBitSet(encodingMask, 6);
-            bool hasInternalRecipeId = this.IsBitSet(encodingMask, 7);
-            bool hasProductId = this.IsBitSet(encodingMask, 8);
-            bool hasExternalConfigurationId = this.IsBitSet(encodingMask, 9);
-            bool hasInternalConfigurationId = this.IsBitSet(encodingMask, 10);
-            bool hasJobId = this.IsBitSet(encodingMask, 11);
-            bool hasCreationTime = this.IsBitSet(encodingMask, 12);
-            bool hasProcessingTimes = this.IsBitSet(encodingMask, 13);
-            bool hasResultUri = this.IsBitSet(encodingMask, 14);
-            bool hasResultEvaluation = this.IsBitSet(encodingMask, 15);
-            bool hasResultEvaluationCode = this.IsBitSet(encodingMask, 16);
-            bool hasResultEvaluationDetails = this.IsBitSet(encodingMask, 17);
-            bool hasFileFormat = this.IsBitSet(encodingMask, 18);
-            jobj.Add("ResultId", decoder.ReadString("ResultId"));
-            if (hasHasTransferableDataOnFile)
-            {
-                jobj.Add("HasTransferableDataOnFile", decoder.ReadBoolean("HasTransferableDataOnFile"));
-            }
-            if (hasIsPartial)
-            {
-                jobj.Add("IsPartial", decoder.ReadBoolean("IsPartial"));
-            }
-            if (hasIsSimulated)
-            {
-                jobj.Add("IsSimulated", decoder.ReadBoolean("IsSimulated"));
-            }
-            if (hasResultState)
-            {
-                jobj.Add("ResultState", decoder.ReadInt32("ResulState"));
-            }
-            if (hasStepId)
-            {
-                jobj.Add("StepId", decoder.ReadString("StepId"));
-            }
-            if (hasPartId)
-            {
-                jobj.Add("PartId", decoder.ReadString("PartId"));
-            }
-            if (hasExternalRecipeId)
-            {
-                jobj.Add("ExternalRecipeId", decoder.ReadString("ExternalRecipeId"));
-            }
-            if (hasInternalRecipeId)
-            {
-                jobj.Add("InternalRecipeId", decoder.ReadString("InternalRecipeId"));
-            }
-            if (hasProductId)
-            {
-                jobj.Add("ProductId", decoder.ReadString("ProductId"));
-            }
-            if (hasExternalConfigurationId)
-            {
-                jobj.Add("ExternalConfigurationId", decoder.ReadString("ExternalConfigurationId"));
-            }
-            if (hasInternalConfigurationId)
-            {
-                jobj.Add("InternalConfigurationId", decoder.ReadString("InternalConfigurationId"));
-            }
-            if (hasJobId)
-            {
-                jobj.Add("JobId", decoder.ReadString("JobId"));
-            }
-            if (hasCreationTime)
-            {
-                jobj.Add("CreationTime", decoder.ReadDateTime("CreationTime"));
-            }
-            if (hasProcessingTimes)
-            {
-                jobj.Add("ProcessingTimes", decoder.ReadExtensionObject("ProcessingTimes").ToString());
-            }
-            if (hasResultUri)
-            {
-                JArray resultUriArray = new JArray();
-                StringCollection resultUris = decoder.ReadStringArray("ResultUri");
-                foreach (string resultUri in resultUris)
-                {
-                    resultUriArray.Add(resultUri);
-                }
-                jobj.Add("ResultUri", resultUriArray);
-            }
-            if (hasResultEvaluation)
-            {
-                jobj.Add("ResultEvaluation",decoder.ReadInt32("ResultEvaluation"));
-            }
-            if (hasResultEvaluationCode)
-            {
-                jobj.Add("ResulEvaluationCode", decoder.ReadInt64("EvaluationCode"));
-            }
-            if (hasResultEvaluationDetails)
-            {
-                decoder.ReadLocalizedText("EvaluationDetails");
-            }
-            if (hasFileFormat)
-            {
-                decoder.ReadStringArray("FileFormat");
-            }
-            
-            return jobj;
-        }
-       
-        public JObject decodeJobOrder() {
-            JObject jobj = new JObject();
-            return jobj;
-        }
-        public void decodeResult(JObject jobject, ExtensionObject resultEto) {
-            jobject.Add("$TypeDefinition", "nsu=http://opcfoundation.org/UA/Machinery/Result;i=2001");
-            BinaryDecoder binaryDecoder = new BinaryDecoder((byte[])resultEto.Body, ServiceMessageContext.GlobalContext);
-            ExtensionObject resultMetaDataEto = binaryDecoder.ReadExtensionObject("ResultMetadate");
-            if(resultMetaDataEto.Encoding == ExtensionObjectEncoding.Binary) {
-                ExpandedNodeId binaryEncodingType = resultMetaDataEto.TypeId;
-                if((uint)binaryEncodingType.Identifier == 5005) {
-                    jobject.Add("ResultMetaData", this.decodeResultMetaData(resultMetaDataEto));
-                }
-            }
-            VariantCollection vc = binaryDecoder.ReadVariantArray("ResultContent");
-            JArray resultContents = new JArray();
-            foreach (Variant resultContent in vc)
-            {
-                if (resultContent.Value is ExtensionObject)
-                {
-                    ExtensionObject resultContentEto = (ExtensionObject)resultContent.Value;
-                    ExtensionObjectEncoding encoding = resultContentEto.Encoding;
-                    if (encoding == ExtensionObjectEncoding.Binary)
-                    {
-                        ExpandedNodeId binaryEncodingType = resultContentEto.TypeId;
-                        if ((uint)binaryEncodingType.Identifier == 5063)
-                        {
-                            resultContents.Add(this.decodeCrimpOutputType(resultContentEto));
-                        }
-                    }
-                }
-            }
-            jobject.Add("ResultContent", resultContents);
-        }
         private string getInstanceNsu(StructuredNode machineNode) {
             string nsuString = "nsu=";
             string nameSpace = "";
