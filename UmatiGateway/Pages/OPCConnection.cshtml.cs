@@ -15,7 +15,7 @@ namespace UmatiGateway.Pages
         public string LabelOPCSessionName { get; } = "OPCSessionName:";
         public string LabelOPCSessionId { get; } = "OPCSessionId:";
         public string LabelConnectionStatus { get; } = "ConnectionStatus:";
-        public string ConnectionUrl { get; private set; } = "opc.tcp://nb-mdornaus:62541/Quickstarts/ReferenceServer";
+        public string ConnectionUrl { get; private set; } = "";
         public ClientFactory ClientFactory;
         public string SessionId { get; private set; } = "";
         public string OPCSessionName { get; private set; } = "";
@@ -77,14 +77,16 @@ namespace UmatiGateway.Pages
             }
             else
             {
-                Client client = ClientFactory.getClient(this.SessionId);
+                Client client = ClientFactory.getClient(mySessionId);
                 this.SessionId = mySessionId;
                 if (client.Session != null)
                 {
                     this.OPCSessionId = client.Session.SessionId.ToString();
                     this.ConnectionStatus = client.Session.Connected.ToString();
                     this.OPCSessionName = client.Session.SessionName;
+                    
                 }
+                this.ConnectionUrl = client.getOpcConnectionUrl();
             }
         }
     }

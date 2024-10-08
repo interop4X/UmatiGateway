@@ -1,0 +1,123 @@
+﻿@page
+@model UmatiGateway.Pages.ConfigurationModel
+@{
+    ViewData["Title"] = "Configuration";
+}
+<h2>Configuration</h2>
+
+<form id="upload-form" method="post">
+    <div style="float:left; width:49%">
+        <fieldset class="settings-fieldset">
+        <legend class ="settings-legend">Active Configuration</legend>
+        <!-- <div class="divider">Mqtt Configuration</div> -->
+        <label for="OpcConnection" class="settings-label">OPC Server Endpoint</label>
+        <input id="OpcConnection" class="settings-input" type="text" name="OpcConnectionUrl" value="@Model.configuration.opcServerEndpoint">
+        <!-- <div class="divider">Mqtt Configuration</div> -->
+        <label for="MqttConnection" class="settings-label">Mqtt Server Endpoint</label>
+        <input id="MqttConnection" class="settings-input" type="text" name="MqttConnectionUrl" value="@Model.configuration.mqttServerEndpopint">
+        <label for="MqttUser" class="settings-label">User</label>
+        <input type="text" class="settings-input" id="MqttUser" name="MqttUser" value="@Model.configuration.mqttUser">
+        <label for="Password" class="settings-label">Password</label>
+        <input type="password" class="settings-input" id="Password" name="MqttPassword" value="@Model.configuration.mqttPassword">
+        <label for="ClientId" class="settings-label">ClientId</label>
+        <input type="text" class="settings-input" id="ClientId" name="MqttClientId" value="@Model.configuration.mqttClientId">
+        <label for="Prefix" class="settings-label">Prefix</label>
+        <input type="text"class="settings-input" id="Prefix" name="MqttPrefix" value="@Model.configuration.mqttPrefix">
+        <!-- <div class="divider">Published Nodes</div> -->
+        <table class="nodetable">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>NamespaceUrl</th>
+                    <th>Identifier</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (var i = 0; i < Model.configuration.publishedNodes.Count; i++)
+                {
+                    <tr>
+                        <td>@(i + 1)</td>
+                        <td>@Model.configuration.publishedNodes[i].type</td>
+                        <td>@Model.configuration.publishedNodes[i].namespaceUrl</td>
+                        <td>@Model.configuration.publishedNodes[i].nodeId</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        <div class="settings-button-container">
+            <button type="submit" asp-page-handler="Download" class="settings-button"> Download Active Configuration</button>
+        </div>
+        </fieldset>
+    </div>
+    <div style="float:right; width:49%">
+        <fieldset class="settings-fieldset">
+            <legend class="settings-legend" id="file-name-display">Configuration File</legend>
+            <!-- <div class="divider">Mqtt Configuration</div> -->
+            <label for="OpcConnection" class="settings-label">OPC Server Endpoint</label>
+            <input id="OpcConnection" class="settings-input" type="text" name="OpcConnectionUrl" value="@Model.loadedConfiguration.opcServerEndpoint">
+            <!-- <div class="divider">Mqtt Configuration</div> -->
+            <label for="MqttConnection" class="settings-label">ConnectionUrl</label>
+            <input id="MqttConnection" class="settings-input" type="text" name="MqttConnectionUrl" value="@Model.loadedConfiguration.mqttServerEndpopint">
+            <label for="MqttUser" class="settings-label">User</label>
+            <input type="text" class="settings-input" id="MqttUser" name="MqttUser" value="@Model.loadedConfiguration.mqttUser">
+            <label for="Password" class="settings-label">Password</label>
+            <input type="password" class="settings-input" id="Password" name="MqttPassword" value="@Model.loadedConfiguration.mqttPassword">
+            <label for="ClientId" class="settings-label">ClientId</label>
+            <input type="text" class="settings-input" id="ClientId" name="MqttClientId" value="@Model.loadedConfiguration.mqttClientId">
+            <label for="Prefix" class="settings-label">Prefix</label>
+            <input type="text" class="settings-input" id="Prefix" name="MqttPrefix" value="@Model.loadedConfiguration.mqttPrefix">
+            <!-- <div class="divider">Published Nodes</div> -->
+            <table class="nodetable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>NamespaceUrl</th>
+                        <th>Identifier</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < Model.configuration.publishedNodes.Count; i++)
+                    {
+                        <tr>
+                            <td>@(i + 1)</td>
+                            <td>@Model.configuration.publishedNodes[i].type</td>
+                            <td>@Model.configuration.publishedNodes[i].namespaceUrl</td>
+                            <td>@Model.configuration.publishedNodes[i].nodeId</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+            <div class="settings-button-container">
+                <label for="file-upload" class="file-input-label-as-button">Load</label>
+                <input type="file" id="file-upload" class="file-input">
+                <!-- Verstecktes Feld zum Speichern des Datei-Inhalts -->
+                <input type="hidden" id="file-content" name="FileContent" />
+                <button asp-page-handler="Load" style="display:none" id="LoadButton">Apply</button>
+                <button asp-page-handler="Apply" class="settings-button" style="margin-left:10px">Apply</button>
+            </div>
+        </fieldset>
+    </div>
+</form>
+<script>
+    const fileInput = document.getElementById('file-upload');
+    const fileNameDisplay = document.getElementById('file-name-display');
+    const fileContentInput = document.getElementById('file-content');
+    const loadButton = document.getElementById('LoadButton')
+
+    fileInput.addEventListener('change', function () {
+        const file = fileInput.files[0];
+        if (file) {
+            const fileName = fileInput.files.length > 0 ? file.filename : "Keine Datei ausgewählt";
+            fileNameDisplay.textContent = "Configuration File " + fileName;
+            file.text().then(fileContent => {
+                // Dateiinhalt in das versteckte Feld schreiben
+                fileContentInput.value = fileContent;
+                loadButton.click();
+            }).catch(error => {
+                console.error("Fehler beim Lesen der Datei:", error);
+            })
+        } 
+    });
+</script>

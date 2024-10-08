@@ -28,3 +28,236 @@ btn-txt {
     cursor: pointer;
     display: inline-block;
 }
+.nodetable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed; /* Festgelegte Spaltenbreiten */
+}
+
+.nodetable, .nodetable th, .nodetable td {
+    border: 1px solid black;
+}
+
+.nodetable th, .nodetable td {
+    padding: 8px;
+    text-align: left;
+    word-wrap: break-word; /* Zeilenumbruch für lange Inhalte */
+}
+
+.nodetable th {
+    background-color: #f2f2f2;
+}
+
+/* Festlegen der Spaltenbreiten */
+.nodetable th:nth-child(1), .nodetable td:nth-child(1) {
+    width: 15%; /* Spalte für "Nummer" */
+}
+
+.nodetable th:nth-child(2), .nodetable td:nth-child(2) {
+    width: 20%; /* Spalte für "Type" */
+}
+
+.nodetable th:nth-child(3), .nodetable td:nth-child(3) {
+    width: 45%; /* Spalte für "URL" */
+}
+
+.nodetable th:nth-child(4), .nodetable td:nth-child(4) {
+    width: 20%; /* Spalte für "ID" */
+}
+
+.custom-file-upload {
+    display: inline-block;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    background-color: #fff;
+    text-align: left;
+    cursor: pointer;
+    box-sizing: border-box;
+}
+
+    .custom-file-upload:hover {
+        background-color: #f9f9f9;
+    }
+
+/* Optional: Feld zur Anzeige des Dateinamens, sieht wie ein Textfeld aus */
+.file-name {
+    padding-left: 10px;
+    font-family: Arial, sans-serif;
+    font-size: 14px;
+    color: #555;
+    display: inline-block;
+    width: 250px;
+    box-sizing: border-box;
+}
+/* Fieldset styling */
+.settings-fieldset {
+    border: 2px solid #A9A9A9; /* Dunkelgrau für den Rand */
+    border-radius: 10px;
+    padding: 20px;
+    background-color: #F5F5F5; /* Helles Grau für den Hintergrund */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+}
+
+/* Legend styling */
+.settings-legend {
+    font-size: 1.2em;
+    padding: 0 10px;
+    color: #696969; /* Mittelgrau für den Text */
+    font-weight: bold;
+    background-color: transparent; /* Gleiche Hintergrundfarbe wie das Fieldset */
+    position: relative;
+    top: -15px; /* Etwas nach oben verschoben */
+    left: -20px;
+    display: inline-block; /* Inline block, damit der Rahmen korrekt gezeichnet wird */
+}
+
+/* Label über dem Input-Feld */
+.settings-label {
+    display: block;
+    margin-bottom: 5px;
+    color: #696969;
+    font-weight: bold;
+}
+
+.settings-input {
+    border: 1px solid #A9A9A9; /* Graue Ränder für die Textfelder */
+    padding: 5px;
+    border-radius: 5px;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+/* Container für den Schalter mit fester Breite */
+.settings-switch {
+    position: relative;
+    display: inline-block;
+    width: 500px; /* Breiter Slider */
+    height: 34px;
+}
+
+    /* Verstecke die Standard-Checkbox */
+    .settings-switch input {
+        display: none;
+    }
+
+/* Slider für den Toggle-Schalter */
+.settings-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: 0.4s;
+    border-radius: 34px;
+}
+
+    .settings-slider:before {
+        position: absolute;
+        content: "";
+        height: 26px;
+        width: 26px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.4s;
+        border-radius: 50%;
+    }
+
+/* Schalter aktiviert */
+.settings-switch input:checked + .settings-slider {
+    background-color: #4CAF50;
+}
+
+    /* Schieberegler bewegt sich korrekt */
+    .settings-switch input:checked + .settings-slider:before {
+        transform: translateX(465px); /* Feste Breite für korrekte Bewegung */
+    }
+
+/* Text On/Off neben dem Slider */
+.settings-on-off-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 20px;
+}
+
+/* Styling für On/Off-Labels */
+.settings-on-off-label span {
+    font-weight: bold;
+    font-size: 0.9em;
+    color: #333;
+}
+
+.settings-on-off-label span.on {
+    margin-right: 10px;
+}
+
+.settings-on-off-label span.off {
+    margin-left: 10px;
+}
+
+/* Button-Styling */
+.settings-button-container {
+    display: flex;
+    justify-content: flex-end; /* Button nach rechts ausrichten */
+    margin-top: 20px;
+}
+
+.settings-button {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* Leichter Schatten */
+    transition: background-color 0.3s, box-shadow 0.3s;
+}
+
+.settings-button:hover {
+    background-color: #45a049;
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15); /* Stärkerer Schatten beim Hover */
+}
+
+/* Label, das wie ein Textfeld aussieht */
+.settings-label-as-textfield {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 20px;
+    background-color: white;
+    border: 1px solid #A9A9A9;
+    border-radius: 5px;
+    color: #696969;
+    font-size: 1em;
+}
+
+/* Horizontaler Trenner mit Text */
+.divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 10px 0;
+}
+
+.divider::before,
+.divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #A9A9A9;
+}
+
+.divider::before {
+    margin-right: 10px;
+}
+
+.divider::after {
+    margin-left: 10px;
+}

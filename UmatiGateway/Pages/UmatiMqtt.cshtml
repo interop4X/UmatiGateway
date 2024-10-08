@@ -8,58 +8,49 @@
 <p>Configure your Umati Mqtt.</p>
 
 <form method="post">
-    <div style="float:left; width:50%">
-    <table>
-        <tr>
-            <td align="left" width="140px"><label for="ConnectionType">ConnectionType</label></td>
-            <td align="left">
-                <input type="radio" id="Websocket" name="ConnectionType" value="Websocket">
-                <label for="Websocket">Websocket</label>
-                <input type="radio" id="Tcp" name="ConnectionType" value="Tcp">
-                <label for="Tcp">Tcp</label><br>
-            </td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="MqttUser">User</label></td>
-            <td align="left"><input type="text" size ="60" id="MqttUser" name="MqttUser" value="@Model.MqttUser"></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="Password">Password</label></td>
-            <td align="left"><input type="password" size="60" id="Password" name="MqttPassword" value="@Model.Password"></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="ClientId">ClientId</label></td>
-            <td align="left"><input type="text" size="60" id="ClientId" name="MqttClientId" value="@Model.ClientId"></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="Prefix">Prefix</label></td>
-            <td align="left"><input type="text" size="60" id="Prefix" name="MqttPrefix" value="@Model.Prefix"></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="MqttConnection">ConnectionUrl</label></td>
-            <td align="left"><input id="MqttConnection" size="60" type="text" name="ConnectionUrl" value="@Model.ConnectionUrl"></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="Port">Port</label></td>
-            <td align="left"><input id="Port" size="60" type="text" name="Port" value="@Model.Port"></td>
-         </tr>
-        <tr>
-            <td></td>
-            <td align="right">
-                <button asp-page-handler="Connect" class="button">Connect</button>
-                <button asp-page-handler="Disconnect" class="button">Disconnect</button>
-            </td>
-        </tr>
-    </table>
-    <p></p>
-    <table>
-        <tr>
-            <td align="left" width="140px"><label for="MqttSession">User</label></td>
-            <td align="left"><input type="text" size="60" id="MqttSession" name="MqttSession" value="@Model.MqttUser"></td>
-        </tr>
-    </table>
+    <div style="float:left; width:49%">
+        <fieldset class="settings-fieldset">
+            <legend class="settings-legend">Mqtt Connection</legend>
+            <label for="MqttUser" class="settings-label">User</label>
+            <input type="text" class="settings-input" id="MqttUser" name="MqttUser" value="@Model.MqttUser">
+            <label for="Password" class="settings-label">Password</label>
+            <input type="password" class="settings-input" id="Password" name="MqttPassword" value="@Model.Password">
+            <label for="ClientId" class="settings-label">ClientId</label>
+            <input type="text" class="settings-input" id="ClientId" name="MqttClientId" value="@Model.ClientId">
+            <label for="Prefix" class="settings-label">Prefix</label>
+            <input type="text" class="settings-input" id="Prefix" name="MqttPrefix" value="@Model.Prefix">
+            <label for="MqttConnection" class="settings-label">ConnectionUrl</label>
+            <input id="MqttConnection" class="settings-input" type="text" name="ConnectionUrl" value="@Model.ConnectionUrl">
+            <div class="settings-button-container">
+                <button asp-page-handler="Connect" class="settings-button">Connect</button>
+                <button asp-page-handler="Disconnect" class="settings-button" style="margin-left:10px">Disconnect</button>
+            </div>
+        </fieldset>
     </div>
-    <div style="float:right; width:50%">
-        <span>Published structured Nodes:</span>
+    <div style="float:right; width:49%">
+        <fieldset class="settings-fieldset">
+            <legend class="settings-legend">Published Nodes</legend>
+            <table class="nodetable">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Type</th>
+                        <th>NamespaceUrl</th>
+                        <th>Identifier</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (var i = 0; i < Model.publishedNodes.Count; i++)
+                    {
+                        <tr>
+                            <td>@(i + 1)</td>
+                            <td>@Model.publishedNodes[i].type</td>
+                            <td>@Model.publishedNodes[i].namespaceUrl</td>
+                            <td>@Model.publishedNodes[i].nodeId</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </fieldset>
     </div>
 </form>

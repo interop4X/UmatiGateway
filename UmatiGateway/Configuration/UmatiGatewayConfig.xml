@@ -1,0 +1,2 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<UmatiGatewayConfig version="1.0" autostart="True" file="./Configuration/Files/LocalFlatglassConfigSiemens.xml" useGMSResultEncoding="False" ReadExtraLibs="True"/>

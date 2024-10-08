@@ -1,0 +1,64 @@
+﻿@page
+@model UmatiGateway.Pages.SettingsModel
+@{
+    ViewData["Title"] = "Application Settings";
+}
+<h1>Application Settings</h1>
+
+<p>Choose or create a Configuration File.</p>
+
+<form method="post">
+    <div style="float:left; width:49%">
+        <fieldset class="settings-fieldset">
+            <legend class="settings-legend">Application Configuration</legend>
+            <label for="Autostart" class="settings-label">AutoStart</label>
+            <div class="settings-on-off-label">
+                <span class="off">Off</span>
+                <label class="settings-switch">
+                    <input id="Autostart"  type="checkbox" name="AutoStart" value="true" @(Model.configuration.autostart ? "checked" : "")>
+                    <span class="settings-slider"></span>
+                </label>
+                <span class="on">On</span>
+            </div>
+            <label for="UseGMSResultEncoding" class="settings-label">GMSResultEncoding</label>
+            <div class="settings-on-off-label">
+                <span class="off">Off</span>
+                <label class="settings-switch">
+                    <input id="UseGMSResultEncoding" size="60" type="checkbox" name="UseGMSResultEncoding" value="true" @(Model.configuration.useGMSResultEncoding ? "checked" : "")>
+                    <span class="settings-slider"></span>
+                </label>
+                <span class="on">On</span>
+            </div>
+            <label for="ReadExtraLibs" class="settings-label">Read Extra Libs</label>
+            <div class="settings-on-off-label">
+                <span class="off">Off</span>
+                <label class="settings-switch">
+                    <input id="ReadExtraLibs" size="60" type="checkbox" name="ReadExtraLibs" value="true" @(Model.configuration.readExtraLibs ? "checked" : "")>
+                    <span class="settings-slider"></span>
+                </label>
+                <span class="on">On</span>
+            </div>
+
+            <label for="ConfigurationFile" class="settings-label">ConfigurationFile</label>
+            <input type="file" id="file" name="file" style="display:none" />
+            <input type="text" id="configFilePath" name="configFilePath" style="display:none" value="@Model.configuration.configFilePath" />
+            <label for="file" class="settings-label-as-textfield file-name"> @Model.configuration.configFilePath</label>
+            <button type="submit" asp-page-handler="Save" class="settings-button">Speichern</button>
+        </fieldset>
+    </div>
+    <script>
+        // JavaScript, um den Dateinamen anzuzeigen, wenn eine Datei ausgewählt wird
+        const fileInput = document.getElementById('file');
+        const fileNameDisplay = document.querySelector('.file-name');
+        const fileInputPath = document.getElementById('configFilePath');
+
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+                fileInputPath.value = fileInput.files[0].name;
+            } else {
+                //fileNameDisplay.textContent = 'Keine Datei ausgewählt';
+            }
+        });
+    </script>
+</form>

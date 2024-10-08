@@ -40,7 +40,7 @@ namespace UmatiGateway.Pages
                 TreeNode? selectedTreeNode = this.GetForUid(uuid);
                 if (selectedTreeNode != null)
                 {
-                    client.MqttProvider.onlineMachines.Add(selectedTreeNode.NodeData.node.NodeId);
+                    client.publishNode(selectedTreeNode.NodeData.node.NodeId);
                 }
             }
             return new PageResult();

@@ -16,6 +16,19 @@
                     name="uuid" value="@node.uid" onclick="(() => OnPostBrowseSelectedTreeNode(node.uid)">
                 @node.NodeData.node.DisplayName
             </button>
+            @{
+                if (@node.NodeData.node.DisplayName.Text.Length <= 8)
+                {
+                    <img src="./css/complete_alt.png" />
+                }
+                else if (@node.NodeData.node.DisplayName.Text.Length > 8 && @node.NodeData.node.DisplayName.Text.Length < 12)
+                {
+                    <img src="./css/delete.png" />
+                } else
+                {
+                    <img src="./css/missing.png" />
+                }
+            }
         
             @{
                 foreach (var innernode in node.children)
@@ -98,6 +111,10 @@
                                     <tr>
                                         <td><label>Description:</label></td>
                                         <td><input value="@selectedNode.NodeData.node.Description" readonly /></td>
+                                    </tr>
+                                    <tr>
+                                        <td><label>Value:</label></td>
+                                        <td><input value="@selectedNode.NodeData.DataValue" readonly /></td>
                                     </tr>
                                     <tr>
                                         <td align="right">

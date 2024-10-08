@@ -6,9 +6,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using MQTTnet.Exceptions;
+using Newtonsoft.Json.Linq;
 using Opc.Ua;
 using Opc.Ua.Client;
+using Opc.Ua.Client.ComplexTypes;
 using Opc.Ua.Schema.Binary;
+using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace UmatiGateway.OPC
 {
@@ -23,7 +26,33 @@ namespace UmatiGateway.OPC
             m_configuration.CertificateValidator.CertificateValidation += CertificateValidation;
             this.TypeDictionaries = new TypeDictionaries(this);
             this.MqttProvider = new MqttProvider(this);
+
         }
+
+        public void StartUp()
+        {
+            Console.WriteLine("Reading Configuration");
+            this.configuration = new ConfigurationReader().ReadConfiguration();
+            this.opcServerUrl = this.configuration.opcServerEndpoint;
+            this.TypeDictionaries.ReadExtraLibs = this.configuration.readExtraLibs; 
+            this.MqttProvider.connectionString = this.configuration.mqttServerEndpopint;
+            this.MqttProvider.user = this.configuration.mqttUser;
+            this.MqttProvider.pwd = this.configuration.mqttPassword;
+            this.MqttProvider.useGMSResultEncoding = this.configuration.useGMSResultEncoding;
+            this.MqttProvider.clientId = this.configuration.mqttClientId;
+            this.MqttProvider.mqttPrefix = this.configuration.mqttPrefix;
+            foreach (PublishedNode publishedNode in configuration.publishedNodes)
+            {
+                this.MqttProvider.publishedNodes.Add(publishedNode);
+            }
+            if (this.configuration.autostart == true)
+            {
+                Console.WriteLine("Create OPC Connection");
+                _ = this.ConnectAsync(this.opcServerUrl).Result;
+                Console.WriteLine("Create Mqtt Connection");
+                this.MqttProvider.Connect();
+            }
+        } 
         #endregion
 
         #region Public Properties
@@ -32,17 +61,25 @@ namespace UmatiGateway.OPC
         /// </summary>
         public Session Session => m_session;
         public TypeDictionaries TypeDictionaries;
+        public ComplexTypeSystem ComplexTypeSystem;
+        public String opcServerUrl = "";
 
         /// <summary>
         /// Auto accept untrusted certificates.
         /// </summary>
-        public bool AutoAccept { get; set; } = false;
+        public bool AutoAccept { get; set; } = true;
         #endregion
 
         public Tree BrowseTree = new Tree();
+        public Configuration configuration = new Configuration();
+        public Configuration loadedConfiguration = new Configuration();
 
         public MqttProvider MqttProvider;
 
+        public string getOpcConnectionUrl()
+        {
+            return this.opcServerUrl;
+        }
         public void ConnectMqtt()
         {
             this.MqttProvider.Connect();
@@ -103,12 +140,31 @@ namespace UmatiGateway.OPC
         {
             this.MqttProvider.clientId = MqttClientId;
         }
+        public List<PublishedNode> getPublishedNodes() {
+            return this.MqttProvider.publishedNodes;
+        }
+        public void publishNode(NodeId nodeId)
+        {
+            if (nodeId != null)
+            {
+                object? identifier = nodeId.Identifier;
+                string? stringId = nodeId.Identifier.ToString();
+                if (stringId != null)
+                {
+                    PublishedNode publishedNode = new PublishedNode();
+                    publishedNode.type = nodeId.IdType.ToString();
+                    publishedNode.nodeId = stringId;
+                    publishedNode.namespaceUrl = this.GetNamespaceTable().GetString(nodeId.NamespaceIndex);
+                    this.MqttProvider.publishedNodes.Add(publishedNode);
+                }
+            }
+        }
 
 
 
         public void DisconnectMqtt()
         {
-            //this.MqttProvider.;
+            this.MqttProvider.Disconnect();
         }
 
         #region Public Methods
@@ -131,9 +187,10 @@ namespace UmatiGateway.OPC
 
                     // Get the endpoint by connecting to server's discovery endpoint.
                     // Try to find the first endopint with security.
-                    EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, true);
+                    EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
                     EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
                     ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
+                    
 
                     // Create the session
                     Session session = await Session.Create(
@@ -144,6 +201,7 @@ namespace UmatiGateway.OPC
                         m_configuration.ApplicationName,
                         30 * 60 * 1000,
                         new UserIdentity(),
+                        //null,
                         null
                     );
 
@@ -156,7 +214,11 @@ namespace UmatiGateway.OPC
                     // Session created successfully.
                     m_output.WriteLine("New Session Created with SessionName = {0}", m_session.SessionName);
                 }
-                this.TypeDictionaries.ReadTypeDictionary();
+                this.TypeDictionaries = new TypeDictionaries(this);
+                this.TypeDictionaries.ReadTypeDictionary(false);
+                //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
+                //this.ComplexTypeSystem.Load().Wait();
+
                 return true;
             }
             catch (Exception ex)
@@ -164,6 +226,33 @@ namespace UmatiGateway.OPC
                 // Log Error
                 m_output.WriteLine("Create Session Error : {0}", ex.Message);
                 return false;
+            }
+        }
+        private void CertificateValidation(CertificateValidator sender, CertificateValidationEventArgs e)
+        {
+            bool certificateAccepted = false;
+
+            // ****
+            // Implement a custom logic to decide if the certificate should be
+            // accepted or not and set certificateAccepted flag accordingly.
+            // The certificate can be retrieved from the e.Certificate field
+            // ***
+
+            ServiceResult error = e.Error;
+            m_output.WriteLine(error);
+            if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted && AutoAccept)
+            {
+                certificateAccepted = true;
+            }
+
+            if (certificateAccepted)
+            {
+                m_output.WriteLine("Untrusted Certificate accepted. Subject = {0}", e.Certificate.Subject);
+                e.Accept = true;
+            }
+            else
+            {
+                m_output.WriteLine("Untrusted Certificate rejected. Subject = {0}", e.Certificate.Subject);
             }
         }
 
@@ -174,6 +263,8 @@ namespace UmatiGateway.OPC
         {
             try
             {
+                //NodeId nodeId = new NodeId((uint)5, (ushort)8);
+                //this.decodeComplexType(nodeId);
                 if (m_session != null)
                 {
                     m_output.WriteLine("Disconnecting...");
@@ -204,7 +295,7 @@ namespace UmatiGateway.OPC
                 try {
                     node = m_session.ReadNode(nodeId);
                 } catch (Exception e) {
-                    Console.Out.Write(e);
+                    Console.Out.WriteLine(e.Message + " NodeId:" + nodeId);
                 }
             }
             return node;
@@ -272,6 +363,12 @@ namespace UmatiGateway.OPC
                 }
             }
             return filteredNodeIds;
+        }
+        public List<NodeId> BrowseLocalNodeIds(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes, NodeId expectedTypeDefinition)
+        {
+            List<NodeId> filteredNodeIds = new List<NodeId>();
+            List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
+            return nodeIds;
         }
         public NodeId getTypeDefinition(NodeId nodeId)
         {
@@ -528,9 +625,68 @@ namespace UmatiGateway.OPC
                     this.BrowseTree.children.AddLast(treeNode);
                     this.BrowseTree.uids.Add(treeNode.uid, treeNode);
                     this.BrowseTree.Initialized = true;
+                    if(node.NodeClass == NodeClass.Variable)
+                    {
+                        nodeData.DataValue = this.decodeComplexType(node.NodeId);
+                    }
                 }
             }
 
+        }
+        private JObject decodeDataValue(DataValue dataValue)
+        {
+            JObject jObject = new JObject();
+            if(dataValue.Value is ExtensionObject extensionObject)
+            {
+
+            } else if(dataValue.Value is String stringValue)
+            {
+
+            } else if(dataValue.Value is LocalizedText localizedTextVale)
+            {
+
+            } else
+            {
+                jObject.Add("Error", "Unknown DataValue");
+            }
+            return jObject;
+        }
+        private JObject decodeComplexType(NodeId nodeId)
+        {
+            JObject jObject = new JObject();
+            
+            Node? node = this.ReadNode(nodeId);
+            DataValue dv = this.ReadValue(nodeId);
+            if (dv.Value is ExtensionObject eto) {
+                ExpandedNodeId expandedNodeId = this.getIndexedNodeId(eto.TypeId);
+                NodeIdDictionary<DataTypeDefinition> complexType = this.ComplexTypeSystem.GetDataTypeDefinitionsForDataType(expandedNodeId);
+                if (complexType != null)
+                {
+                    foreach(NodeId complexNode in complexType.Keys)
+                    {
+                        complexType.TryGetValue(complexNode, out DataTypeDefinition? complexValue);
+                        if (complexValue != null)
+                        {
+                            jObject.Add(complexNode.ToString(), complexValue.ToString());
+                        }
+                    }
+                    Console.WriteLine("Gelesener komplexer Typ: " + complexType.ToString());
+                }
+                else
+                {
+                    Console.WriteLine("Dekodierung des komplexen Typs fehlgeschlagen.");
+                }
+            }
+            return jObject;
+        }
+        public ExpandedNodeId getIndexedNodeId(ExpandedNodeId expandedNodeId) {
+            if(expandedNodeId.IsAbsolute)
+            {
+                return new ExpandedNodeId(expandedNodeId.Identifier, (ushort)(this.GetNamespaceTable().GetIndex(expandedNodeId.NamespaceUri)), expandedNodeId.NamespaceUri, expandedNodeId.ServerIndex);
+            } else
+            {
+                return expandedNodeId;
+            }
         }
         public void BrowseSelectedTreeNode(TreeNode TreeNode)
         {
@@ -559,6 +715,10 @@ namespace UmatiGateway.OPC
                         TreeNode treeNode = new TreeNode(nodeData);
                         TreeNode.children.AddLast(treeNode);
                         this.BrowseTree.uids.Add(treeNode.uid, treeNode);
+                        if (node.NodeClass == NodeClass.Variable)
+                        {
+                            nodeData.DataValue = this.decodeComplexType(node.NodeId);
+                        }
                     }
                 }
             }
@@ -666,37 +826,6 @@ namespace UmatiGateway.OPC
 
         #region Private Methods
 
-        /// <summary>
-        /// Handles the certificate validation event.
-        /// This event is triggered every time an untrusted certificate is received from the server.
-        /// </summary>
-        private void CertificateValidation(CertificateValidator sender, CertificateValidationEventArgs e)
-        {
-            bool certificateAccepted = false;
-
-            // ****
-            // Implement a custom logic to decide if the certificate should be
-            // accepted or not and set certificateAccepted flag accordingly.
-            // The certificate can be retrieved from the e.Certificate field
-            // ***
-
-            ServiceResult error = e.Error;
-            m_output.WriteLine(error);
-            if (error.StatusCode == Opc.Ua.StatusCodes.BadCertificateUntrusted && AutoAccept)
-            {
-                certificateAccepted = true;
-            }
-
-            if (certificateAccepted)
-            {
-                m_output.WriteLine("Untrusted Certificate accepted. Subject = {0}", e.Certificate.Subject);
-                e.Accept = true;
-            }
-            else
-            {
-                m_output.WriteLine("Untrusted Certificate rejected. Subject = {0}", e.Certificate.Subject);
-            }
-        }
         private bool checkSession()
         {
             if (m_session == null || m_session.Connected == false)

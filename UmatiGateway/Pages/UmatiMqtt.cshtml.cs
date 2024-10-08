@@ -17,6 +17,7 @@ namespace UmatiGateway.Pages
         public string ClientId { get; private set; }
         public string Prefix { get; private set; }
         public string[] ConnectionTypes { get; private set; }
+        public List<PublishedNode> publishedNodes { get; private set; }
         public String SessionId { get; private set; }
         public UmatiMqttModel(ClientFactory ClientFactory)
         {
@@ -29,6 +30,7 @@ namespace UmatiGateway.Pages
             Prefix = "umati/v2";
             Port = "1883";
             ConnectionTypes = new string[] { "Websocket", "Tcp" };
+            publishedNodes = new List<PublishedNode>();
         }
 
         public IActionResult OnPostConnect(string ConnectionUrl, string Port, string MqttUser, string MqttPassword, string MqttClientId, string MqttPrefix)
@@ -43,20 +45,20 @@ namespace UmatiGateway.Pages
             client.setMqttPrefix(MqttPrefix);
             client.ConnectMqtt();
             this.UpdateFromMqttClient();
-            return new PageResult();
+            return RedirectToPage();
         }
         public IActionResult OnPostSave(string ConnectionUrl, string MqttPrefix)
         {
             Client client = this.getClient();
             client.setMqttPrefix(Prefix);
             this.UpdateFromMqttClient();
-            return new PageResult();
+            return RedirectToPage();
         }
         public IActionResult OnPostDisconnect()
         {
             Client client = this.getClient();
             client.DisconnectMqtt();
-            return new PageResult();
+            return RedirectToPage();
         }
 
         public void OnGet()
@@ -88,6 +90,7 @@ namespace UmatiGateway.Pages
             Password = client.getMqttPassword();
             ClientId = client.getMqttClientId();
             Prefix = client.getMqttPrefix();
+            publishedNodes = client.getPublishedNodes();
         }
     }
 }

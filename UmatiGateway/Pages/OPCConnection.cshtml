@@ -7,39 +7,24 @@
 
 <p>Configure the connection to the OPC Server.</p>
 <form method="post">
-    <table>
-        <tr>
-            <td align="left" width="140px"><label for="OPCConnection">@Model.LabelConnectionUrl</label></td>
-            <td align="left"><input id="OPCConnection" size="60" type="text" name="ConnectionUrl" value="@Model.ConnectionUrl"></td>
-        </tr>
-        <tr>
-            <td></td>
-            <td align="right">
-                <button asp-page-handler="Connect" class="button">Connect</button>
-                <button asp-page-handler="Disconnect" class="button">Disconnect</button>
-            </td>
-        </tr>
-</table>
-</form>
-<p></p>
-<form method="post">
-    <table>
-        <tr>
-            <td align="left" width="140px"><label for="SessionId">@Model.LabelSessionId</label></td>
-            <td align="left"><input id="SessionId" type="text" size="60" value="@Model.SessionId" readonly/></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="OPCSessionName">@Model.LabelOPCSessionName</label></td>
-            <td align="left"><input id="OPCSessionIdName" type="text" size="60" value="@Model.OPCSessionName" readonly/></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="OPCSessionId">@Model.LabelOPCSessionId</label></td>
-            <td align="left"><input id="OPCSessionId" type="text" size="60" value="@Model.OPCSessionId" readonly/></td>
-        </tr>
-        <tr>
-            <td align="left" width="140px"><label for="ConnectionStatus">@Model.LabelConnectionStatus</label></td>
-            <td align="left"><input id="ConnectionStatus" type="text" size="60" value="@Model.ConnectionStatus" readonly/></td>
-        </tr>
-    </table>
+    <div style="float:left; width:49%">
+    <fieldset class="settings-fieldset">
+    <legend class="settings-legend">OPC Connection</legend>
+    <label for="OPCConnection" class="settings-label">@Model.LabelConnectionUrl</label>
+    <input id="OPCConnection" class="settings-input" type="text" name="ConnectionUrl" value="@Model.ConnectionUrl">
+    <div class="settings-button-container">
+        <button asp-page-handler="Connect" class="settings-button">Connect</button>
+        <button asp-page-handler="Disconnect" class="settings-button" style="margin-left:10px">Disconnect</button>
+    </div>
+    <label for="SessionId" class="settings-label">@Model.LabelSessionId</label>
+    <input id="SessionId" type="text" class="settings-input" value="@Model.SessionId" readonly />
+    <label for="OPCSessionName" class="settings-label">@Model.LabelOPCSessionName</label>
+    <input id="OPCSessionIdName" type="text" class="settings-input" value="@Model.OPCSessionName" readonly />
+    <label for="OPCSessionId" class="settings-label">@Model.LabelOPCSessionId</label>
+    <input id="OPCSessionId" type="text" class="settings-input" value="@Model.OPCSessionId" readonly />
+    <label for="ConnectionStatus" class="settings-label">@Model.LabelConnectionStatus</label>
+    <input id="ConnectionStatus" type="text" class="settings-input" value="@Model.ConnectionStatus" readonly />
+    </fieldset>
+</div>
 </form>
 
