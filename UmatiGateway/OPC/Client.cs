@@ -34,7 +34,7 @@ namespace UmatiGateway.OPC
             Console.WriteLine("Reading Configuration");
             this.configuration = new ConfigurationReader().ReadConfiguration();
             this.opcServerUrl = this.configuration.opcServerEndpoint;
-            this.TypeDictionaries.ReadExtraLibs = this.configuration.readExtraLibs; 
+            this.readExtraLibs = this.configuration.readExtraLibs; 
             this.MqttProvider.connectionString = this.configuration.mqttServerEndpopint;
             this.MqttProvider.user = this.configuration.mqttUser;
             this.MqttProvider.pwd = this.configuration.mqttPassword;
@@ -63,7 +63,7 @@ namespace UmatiGateway.OPC
         public TypeDictionaries TypeDictionaries;
         public ComplexTypeSystem ComplexTypeSystem;
         public String opcServerUrl = "";
-
+        public bool readExtraLibs = false;
         /// <summary>
         /// Auto accept untrusted certificates.
         /// </summary>
@@ -215,6 +215,7 @@ namespace UmatiGateway.OPC
                     m_output.WriteLine("New Session Created with SessionName = {0}", m_session.SessionName);
                 }
                 this.TypeDictionaries = new TypeDictionaries(this);
+                this.TypeDictionaries.ReadExtraLibs = this.readExtraLibs;
                 this.TypeDictionaries.ReadTypeDictionary(false);
                 //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
                 //this.ComplexTypeSystem.Load().Wait();

@@ -1150,7 +1150,7 @@ namespace UmatiGateway.OPC{
             }
             else if (machineId.IdType == IdType.String)
             {
-                identifier = "s=" + (string)machineId.Identifier;
+                identifier = "s=" + ((string)machineId.Identifier).Replace(" ", "_20");
             }
             return nsuString + nameSpace + ";" + identifier;
         }
