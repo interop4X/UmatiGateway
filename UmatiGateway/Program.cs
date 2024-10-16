@@ -4,7 +4,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
-builder.Services.AddSingleton<ClientFactory>();
+var ClientFactory = new ClientFactory();
+builder.Services.AddSingleton<ClientFactory>(ClientFactory);
 builder.Services.AddSession();
 builder.Services.AddMemoryCache();
 

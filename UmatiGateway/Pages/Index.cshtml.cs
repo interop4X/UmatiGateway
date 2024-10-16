@@ -21,7 +21,7 @@ namespace UmatiGateway.Pages
         public void OnGet()
         {
             Client client = this.getClient(clientFactory);
-            client.StartUp();
+            //client.StartUp();
         }
         private Client getClient(ClientFactory clientFactory)
         {

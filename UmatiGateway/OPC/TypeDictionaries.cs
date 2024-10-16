@@ -37,11 +37,17 @@ namespace UmatiGateway.OPC
             this.ReadOpcBinary();
             if (!onlyBinaries)
             {
+                Console.WriteLine("Read DataTypes");
                 this.ReadDataTypes();
+                Console.WriteLine("Read EventTypes");
                 this.ReadEventTypes();
+                Console.WriteLine("ReadInterfaceTypes");
                 this.ReadInterfaceTypes();
+                Console.WriteLine("ReadObjectTypes");
                 this.ReadObjectTypes();
+                Console.WriteLine("ReadReferenceTypes");
                 this.ReadReferenceTypes();
+                Console.WriteLine("ReadReferenceTypes");
                 this.ReadVariableTypes();
             }
             Console.WriteLine("TypeDictionary Read Finished");
@@ -54,7 +60,6 @@ namespace UmatiGateway.OPC
             {
                 DataValue dv = this.client.ReadValue(binaryTypeDictionary);
                 string xmlString = Encoding.UTF8.GetString((byte[])dv.Value);
-                //Console.WriteLine(xmlString);
                 this.generateDataClasses(xmlString);
             };
             if(ReadExtraLibs)
@@ -281,7 +286,7 @@ namespace UmatiGateway.OPC
                 if (node != null)
                 {
                     dataTypes.Add(dataTypeNodeId, node);
-                    Console.WriteLine(dataTypeNodeId);
+                   // Console.WriteLine(dataTypeNodeId);
                 }
                 else
                 {

@@ -10,8 +10,16 @@ namespace UmatiGateway.OPC
 {
     public class ClientFactory{
         public Dictionary<string, Client> clients = new Dictionary<string, Client>();
+        Client client;
+        public ClientFactory()
+        {
+            Console.WriteLine("Create ClientFactory");
+            client = this.createClientAsync().Result;
+            client.StartUp();
+        }
         public Client getClient(String sessionId){
-            Client? client;
+            return this.client;
+            /*Client? client;
             if(this.clients.TryGetValue(sessionId, out client))
             { 
                 return client;
@@ -20,7 +28,7 @@ namespace UmatiGateway.OPC
                 client = createClientAsync().Result;
                 clients.Add(sessionId, client);
                 return client;
-            }   
+            }*/   
         }
 
         private async Task<Client> createClientAsync(){
