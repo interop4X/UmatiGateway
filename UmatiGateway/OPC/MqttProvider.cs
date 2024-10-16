@@ -52,6 +52,7 @@ namespace UmatiGateway.OPC{
         private bool debug = false;
         private bool ReadInProgress = false;
         public bool singleThreadPolling = false;
+        public bool ConnectedOnce = false;
         public MqttProvider(Client client){
             this.client = client;
             this.mqttClient = mqttFactory.CreateMqttClient();
@@ -81,6 +82,7 @@ namespace UmatiGateway.OPC{
         }
         public void Connect()
         {
+            this.ConnectedOnce = true;
             this.connectionType = WEBSOCKET;
             this.Connect(this.connectionString, this.connectionType, this.connectionPort, this.user, this.pwd);
             foreach (PublishedNode publishedNode in this.publishedNodes)
@@ -1249,8 +1251,11 @@ namespace UmatiGateway.OPC{
             {
                 try
                 {
-                    Console.WriteLine("Reconnecting Mqtt");
-                    this.Reconnect();
+                    if (this.ConnectedOnce)
+                    {
+                        Console.WriteLine("Reconnecting Mqtt");
+                        this.Reconnect();
+                    }
                 }
                 catch (Exception ex1)
                 {
