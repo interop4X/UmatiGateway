@@ -47,7 +47,7 @@ namespace UmatiGateway.OPC
                 this.ReadObjectTypes();
                 Console.WriteLine("ReadReferenceTypes");
                 this.ReadReferenceTypes();
-                Console.WriteLine("ReadReferenceTypes");
+                Console.WriteLine("VariableTypes");
                 this.ReadVariableTypes();
             }
             Console.WriteLine("TypeDictionary Read Finished");

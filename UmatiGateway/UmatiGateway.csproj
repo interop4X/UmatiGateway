@@ -117,6 +117,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="Configuration\Files\LocalFlatglassConfigSiemensMy.xml">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="Configuration\Files\LocalWHConfig.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

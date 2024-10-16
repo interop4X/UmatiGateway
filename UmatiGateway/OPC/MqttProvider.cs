@@ -959,19 +959,19 @@ namespace UmatiGateway.OPC{
                             {
                                 Boolean valueBoolean = BinaryDecoder.ReadBoolean(field.Name);
                                 jObject.Add(field.Name, valueBoolean);
-                                this.Debug("Value: " + valueBoolean);
+                                //this.Debug("Value: " + valueBoolean);
                             }
                             else if (field.TypeName == "opc:Byte")
                             {
                                 Byte valueByte = BinaryDecoder.ReadByte(field.Name);
                                 jObject.Add(field.Name, valueByte.ToString());
-                                this.Debug("Value: " + valueByte.ToString());
+                                //this.Debug("Value: " + valueByte.ToString());
                             }
                             else if (field.TypeName == "opc:ByteString")
                             {
                                 ByteCollection valueByteCollection = BinaryDecoder.ReadByteString(field.Name);
                                 jObject.Add(field.Name, valueByteCollection.ToString());
-                                this.Debug("Value: " + valueByteCollection.ToString());
+                                //this.Debug("Value: " + valueByteCollection.ToString());
                             }
                             else if (field.TypeName == "opc:CharArray")
                             {
@@ -983,31 +983,31 @@ namespace UmatiGateway.OPC{
                             {
                                 DateTime dateTimeValue = BinaryDecoder.ReadDateTime(field.Name);
                                 jObject.Add(field.Name, dateTimeValue.ToString());
-                                this.Debug("Value: " + dateTimeValue.ToString());
+                                //this.Debug("Value: " + dateTimeValue.ToString());
                             }
                             else if (field.TypeName == "opc:Double")
                             {
                                 Double doubleValue = BinaryDecoder.ReadDouble(field.Name);
                                 jObject.Add(field.Name, doubleValue.ToString());
-                                this.Debug("Value: " + doubleValue.ToString());
+                                //this.Debug("Value: " + doubleValue.ToString());
                             }
                             else if (field.TypeName == "opc:Float")
                             {
                                 float floatValue = BinaryDecoder.ReadFloat(field.Name);
                                 jObject.Add(field.Name, floatValue.ToString());
-                                this.Debug("Value: " + floatValue.ToString());
+                                //this.Debug("Value: " + floatValue.ToString());
                             }
                             else if (field.TypeName == "opc:Guid")
                             {
                                 Uuid valueGuid = BinaryDecoder.ReadGuid(field.Name);
                                 jObject.Add(field.Name, valueGuid.ToString());
-                                this.Debug("Value: " + valueGuid.ToString());
+                                //this.Debug("Value: " + valueGuid.ToString());
                             }
                             else if (field.TypeName == "opc:Int16")
                             {
                                 short valueInt16 = BinaryDecoder.ReadInt16(field.Name);
                                 jObject.Add(field.Name, valueInt16.ToString());
-                                this.Debug("Value: " + valueInt16.ToString());
+                                //this.Debug("Value: " + valueInt16.ToString());
                             }
                             else if (field.TypeName == "opc:Int32")
                             {
@@ -1017,49 +1017,49 @@ namespace UmatiGateway.OPC{
                                     jObject.Add(field.Name, valueInt32.ToString());
                                 }
                                 previousInt32 = valueInt32;
-                                this.Debug("Value: " + valueInt32.ToString());
+                                //this.Debug("Value: " + valueInt32.ToString());
                             }
                             else if (field.TypeName == "opc:Int64")
                             {
                                 long valueInt64 = BinaryDecoder.ReadInt64(field.Name);
                                 jObject.Add(field.Name, valueInt64.ToString());
-                                this.Debug("Value: " + valueInt64.ToString());
+                                //this.Debug("Value: " + valueInt64.ToString());
                             }
                             else if (field.TypeName == "opc:SByte")
                             {
                                 sbyte valueSByte = BinaryDecoder.ReadSByte(field.Name);
                                 jObject.Add(field.Name, valueSByte.ToString());
-                                this.Debug("Value: " + valueSByte.ToString());
+                                //this.Debug("Value: " + valueSByte.ToString());
                             }
                             else if (field.TypeName == "opc:String")
                             {
                                 String valueString = BinaryDecoder.ReadString(field.Name);
                                 jObject.Add(field.Name, valueString);
-                                this.Debug("Value: " + valueString.ToString());
+                                //this.Debug("Value: " + valueString.ToString());
                             }
                             else if (field.TypeName == "opc:UInt16")
                             {
                                 ushort uint16Value = BinaryDecoder.ReadUInt16(field.Name);
                                 jObject.Add(field.Name, uint16Value.ToString());
-                                this.Debug("Value: " + uint16Value.ToString());
+                                //this.Debug("Value: " + uint16Value.ToString());
                             }
                             else if (field.TypeName == "opc:UInt32")
                             {
                                 uint uint32Value = BinaryDecoder.ReadUInt32(field.Name);
                                 jObject.Add(field.Name, uint32Value.ToString());
-                                this.Debug("Value: " + uint32Value.ToString());
+                                //this.Debug("Value: " + uint32Value.ToString());
                             }
                             else if (field.TypeName == "opc:UInt64")
                             {
                                 ulong uint64Value = BinaryDecoder.ReadUInt64(field.Name);
                                 jObject.Add(field.Name, uint64Value.ToString());
-                                this.Debug("Value: " + uint64Value.ToString());
+                                //this.Debug("Value: " + uint64Value.ToString());
                             }
                             else if (field.TypeName == "ua:LocalizedText")
                             {
                                 LocalizedText localizedTextValue = BinaryDecoder.ReadLocalizedText(field.Name);
                                 jObject.Add(field.Name, localizedTextValue.ToString());
-                                this.Debug("Value: " + localizedTextValue.ToString());
+                                //this.Debug("Value: " + localizedTextValue.ToString());
                             }
                             if (field.TypeName == "ua:ExtensionObject")
                             {
@@ -1105,7 +1105,7 @@ namespace UmatiGateway.OPC{
                             {
                                 Int32 int32Value = BinaryDecoder.ReadInt32(field.Name);
                                 jObject.Add(field.Name, int32Value);
-                                this.Debug("Value: " + int32Value.ToString());
+                                //this.Debug("Value: " + int32Value.ToString());
                             }
                             else if (field.TypeName.StartsWith("tns:") && field.TypeName != "tns:ResultEvaluationEnum")
                             {
@@ -1235,6 +1235,18 @@ namespace UmatiGateway.OPC{
                             if (!ReadInProgress)
                             {
                                 ReadInProgress = true;
+                                Console.WriteLine("Publish BadList");
+                                this.publishBadList();
+                                Console.WriteLine("Publish Bad List finish.");
+                                Console.WriteLine("Publish Client Online");
+                                this.publishClientOnline();
+                                Console.WriteLine("Publish Client Online finish.");
+                                Console.WriteLine("Publish Online Machines");
+                                this.publishOnlineMachines();
+                                Console.WriteLine("Publish Online Machines finish.");
+                                Console.WriteLine("Publish Identification");
+                                this.publishIdentification();
+                                Console.WriteLine("Publish Identification finish.");
                                 Console.WriteLine("Publish Maschine");
                                 this.publishNode();
                                 Console.WriteLine("Publish Maschine finished.");
