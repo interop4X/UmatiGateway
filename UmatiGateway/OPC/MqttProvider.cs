@@ -1254,6 +1254,18 @@ namespace UmatiGateway.OPC{
                             }
                         } else
                         {
+                            Console.WriteLine("Publish BadList");
+                            this.publishBadList();
+                            Console.WriteLine("Publish Bad List finish.");
+                            Console.WriteLine("Publish Client Online");
+                            this.publishClientOnline();
+                            Console.WriteLine("Publish Client Online finish.");
+                            Console.WriteLine("Publish Online Machines");
+                            this.publishOnlineMachines();
+                            Console.WriteLine("Publish Online Machines finish.");
+                            Console.WriteLine("Publish Identification");
+                            this.publishIdentification();
+                            Console.WriteLine("Publish Identification finish.");
                             Console.WriteLine("Publish Maschine");
                             this.publishNode();
                             Console.WriteLine("Publish Maschine finished.");
