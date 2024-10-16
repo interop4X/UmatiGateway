@@ -14,6 +14,7 @@ namespace UmatiGateway
         public bool useGMSResultEncoding = false;
         public bool readExtraLibs = false;
         public bool singleThreadPolling = false;
+        public int pollTime = 2000;
 
         public string configVersion = "";
         public string opcServerEndpoint = "";

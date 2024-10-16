@@ -57,6 +57,20 @@ namespace UmatiGateway
                         {
                             configuration.singleThreadPolling = false;
                         }
+                        string PollTime = this.ReadAttribute(node, "pollTime");
+                        if (string.IsNullOrWhiteSpace(PollTime))
+                        {
+                            configuration.pollTime = 2000;
+                        } else
+                        {
+                            try
+                            {
+                                configuration.pollTime = int.Parse(PollTime);
+                            } catch (Exception e)
+                            {
+                                Console.WriteLine(e.Message);
+                            }
+                        }
                         configuration.configFilePath = this.ReadAttribute(node, "file");
                         if(string.IsNullOrWhiteSpace(configuration.configFilePath))
                         {

@@ -53,6 +53,8 @@ namespace UmatiGateway.OPC{
         private bool ReadInProgress = false;
         public bool singleThreadPolling = false;
         public bool ConnectedOnce = false;
+        public int PollTimer = 2000;
+        public bool TimerSetup = false;
         public MqttProvider(Client client){
             this.client = client;
             this.mqttClient = mqttFactory.CreateMqttClient();
@@ -62,11 +64,7 @@ namespace UmatiGateway.OPC{
             clientId = "fva/matthias2";
             mqttPrefix = "umati/v2";
             connectionPort = "1883";*/
-            aTimer = new System.Timers.Timer(2000);
-            // Hook up the Elapsed event for the timer. 
-            aTimer.Elapsed += OnTimedEvent;
-            aTimer.AutoReset = true;
-            aTimer.Enabled = true;
+           
             
 
         }
@@ -82,6 +80,16 @@ namespace UmatiGateway.OPC{
         }
         public void Connect()
         {
+            if (!TimerSetup)
+            { 
+                aTimer = new System.Timers.Timer(PollTimer);
+                // Hook up the Elapsed event for the timer. 
+                aTimer.Elapsed += OnTimedEvent;
+                aTimer.AutoReset = true;
+                aTimer.Enabled = true;
+                TimerSetup = true;
+            }
+
             this.ConnectedOnce = true;
             this.connectionType = WEBSOCKET;
             this.Connect(this.connectionString, this.connectionType, this.connectionPort, this.user, this.pwd);
@@ -1210,26 +1218,9 @@ namespace UmatiGateway.OPC{
             {
                 try
                 {
-                    if (firstRead)
+                    if (firstReadFinished)
                     {
-                        firstRead = false;
-                        Console.WriteLine("Publish BadList");
-                        this.publishBadList();
-                        Console.WriteLine("Publish Bad List finish.");
-                        Console.WriteLine("Publish Client Online");
-                        this.publishClientOnline();
-                        Console.WriteLine("Publish Client Online finish.");
-                        Console.WriteLine("Publish Online Machines");
-                        this.publishOnlineMachines();
-                        Console.WriteLine("Publish Online Machines finish.");
-                        Console.WriteLine("Publish Identification");
-                        this.publishIdentification();
-                        Console.WriteLine("Publish Identification finish.");
-                        firstReadFinished = true;
-                    }
-                    if(firstReadFinished)
-                    {
-                        
+
                         if (singleThreadPolling)
                         {
                             if (!ReadInProgress)
@@ -1252,7 +1243,8 @@ namespace UmatiGateway.OPC{
                                 Console.WriteLine("Publish Maschine finished.");
                                 ReadInProgress = false;
                             }
-                        } else
+                        }
+                        else
                         {
                             Console.WriteLine("Publish BadList");
                             this.publishBadList();
@@ -1271,6 +1263,24 @@ namespace UmatiGateway.OPC{
                             Console.WriteLine("Publish Maschine finished.");
                         }
                     }
+                    if (firstRead)
+                    {
+                        firstRead = false;
+                        Console.WriteLine("Publish BadList");
+                        this.publishBadList();
+                        Console.WriteLine("Publish Bad List finish.");
+                        Console.WriteLine("Publish Client Online");
+                        this.publishClientOnline();
+                        Console.WriteLine("Publish Client Online finish.");
+                        Console.WriteLine("Publish Online Machines");
+                        this.publishOnlineMachines();
+                        Console.WriteLine("Publish Online Machines finish.");
+                        Console.WriteLine("Publish Identification");
+                        this.publishIdentification();
+                        Console.WriteLine("Publish Identification finish.");
+                        firstReadFinished = true;
+                    }
+                    
                 }
                 catch (Exception ex)
                 {
