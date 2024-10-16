@@ -1230,13 +1230,21 @@ namespace UmatiGateway.OPC{
                     if(firstReadFinished)
                     {
                         
-                        if (!ReadInProgress && singleThreadPolling)
+                        if (singleThreadPolling)
                         {
-                            ReadInProgress = true;
+                            if (!ReadInProgress)
+                            {
+                                ReadInProgress = true;
+                                Console.WriteLine("Publish Maschine");
+                                this.publishNode();
+                                Console.WriteLine("Publish Maschine finished.");
+                                ReadInProgress = false;
+                            }
+                        } else
+                        {
                             Console.WriteLine("Publish Maschine");
                             this.publishNode();
                             Console.WriteLine("Publish Maschine finished.");
-                            ReadInProgress = false;
                         }
                     }
                 }

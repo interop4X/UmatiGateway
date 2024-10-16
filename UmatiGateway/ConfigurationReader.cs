@@ -48,7 +48,7 @@ namespace UmatiGateway
                         {
                             configuration.readExtraLibs = false;
                         }
-                        string SingleThreadPolling = this.ReadAttribute(node, "SingleThreadPolling");
+                        string SingleThreadPolling = this.ReadAttribute(node, "singleThreadPolling");
                         if (string.Equals(SingleThreadPolling, "true", StringComparison.OrdinalIgnoreCase))
                         {
                             configuration.singleThreadPolling = true;
