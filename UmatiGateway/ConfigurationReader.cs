@@ -48,6 +48,15 @@ namespace UmatiGateway
                         {
                             configuration.readExtraLibs = false;
                         }
+                        string SingleThreadPolling = this.ReadAttribute(node, "SingleThreadPolling");
+                        if (string.Equals(SingleThreadPolling, "true", StringComparison.OrdinalIgnoreCase))
+                        {
+                            configuration.singleThreadPolling = true;
+                        }
+                        else
+                        {
+                            configuration.singleThreadPolling = false;
+                        }
                         configuration.configFilePath = this.ReadAttribute(node, "file");
                         if(string.IsNullOrWhiteSpace(configuration.configFilePath))
                         {

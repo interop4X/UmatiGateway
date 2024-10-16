@@ -41,6 +41,7 @@ namespace UmatiGateway.OPC
             this.MqttProvider.useGMSResultEncoding = this.configuration.useGMSResultEncoding;
             this.MqttProvider.clientId = this.configuration.mqttClientId;
             this.MqttProvider.mqttPrefix = this.configuration.mqttPrefix;
+            this.MqttProvider.singleThreadPolling = this.configuration.singleThreadPolling;
             foreach (PublishedNode publishedNode in configuration.publishedNodes)
             {
                 this.MqttProvider.publishedNodes.Add(publishedNode);

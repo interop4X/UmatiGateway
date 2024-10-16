@@ -13,6 +13,7 @@ namespace UmatiGateway
         public bool autostart = false;
         public bool useGMSResultEncoding = false;
         public bool readExtraLibs = false;
+        public bool singleThreadPolling = false;
 
         public string configVersion = "";
         public string opcServerEndpoint = "";

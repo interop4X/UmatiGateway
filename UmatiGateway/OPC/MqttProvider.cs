@@ -48,7 +48,10 @@ namespace UmatiGateway.OPC{
         private Boolean subscriptionscreated = false;
         private System.Timers.Timer aTimer;
         private bool firstRead = true;
+        private bool firstReadFinished = false;
         private bool debug = false;
+        private bool ReadInProgress = false;
+        public bool singleThreadPolling = false;
         public MqttProvider(Client client){
             this.client = client;
             this.mqttClient = mqttFactory.CreateMqttClient();
@@ -240,7 +243,8 @@ namespace UmatiGateway.OPC{
             } catch (Exception e) {
                 Console.WriteLine(e.ToString());
                 this.connected = false;
-                return false;
+                throw;
+                //return false;
             }
         }
         public bool WriteIdentification(JArray jArray, string machineId, String type)
@@ -372,6 +376,7 @@ namespace UmatiGateway.OPC{
             {
                 Console.WriteLine(e.ToString());
                 this.connected = false;
+                throw;
             }
         } 
         private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
@@ -1218,17 +1223,38 @@ namespace UmatiGateway.OPC{
                         Console.WriteLine("Publish Identification");
                         this.publishIdentification();
                         Console.WriteLine("Publish Identification finish.");
+                        firstReadFinished = true;
                     }
-                    else
+                    if(firstReadFinished)
                     {
-                        Console.WriteLine("Publish Maschine");
-                        this.publishNode();
-                        Console.WriteLine("Publish Maschine finished.");
+                        
+                        if (!ReadInProgress && singleThreadPolling)
+                        {
+                            ReadInProgress = true;
+                            Console.WriteLine("Publish Maschine");
+                            this.publishNode();
+                            Console.WriteLine("Publish Maschine finished.");
+                            ReadInProgress = false;
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
+                    ReadInProgress = false;
+                    this.connected = false;
+                   
+                }
+            } else
+            {
+                try
+                {
+                    Console.WriteLine("Reconnecting Mqtt");
+                    this.Reconnect();
+                }
+                catch (Exception ex1)
+                {
+                    Console.WriteLine(ex1.ToString());
                 }
             }
         }
