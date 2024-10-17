@@ -276,8 +276,8 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 //logger.Error ("Unable to publish Identification", e);
-                this.connected = false;
-                return false;
+               // this.connected = false;
+                throw;
             }
         }
         public void Start() {
@@ -303,7 +303,8 @@ namespace UmatiGateway.OPC{
             } catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                this.connected = false;
+                //this.connected = false;
+                throw;
             }
         }
         public bool publishBadList() {
@@ -319,8 +320,9 @@ namespace UmatiGateway.OPC{
                 return true;
             } catch(Exception e) {
                 //logger.Error ("Unable to publish BadList", e);
-                this.connected = false;
-                return false;
+                //this.connected = false;
+                //return false;
+                throw;
             }
         }
         public bool publishClientOnline()
@@ -350,8 +352,9 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 //logger.Error("Unable to publish ClientOnline", e);
-                this.connected = false;
-                return false;
+                //this.connected = false;
+                //return false;
+                throw;
             }
         }
 
@@ -385,7 +388,7 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                this.connected = false;
+                //this.connected = false;
                 throw;
             }
         } 
@@ -508,7 +511,8 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                this.connected = false;
+                //this.connected = false;
+                throw;
             } 
         }
 
@@ -1278,16 +1282,29 @@ namespace UmatiGateway.OPC{
                         Console.WriteLine("Publish Identification");
                         this.publishIdentification();
                         Console.WriteLine("Publish Identification finish.");
+                        Console.WriteLine("Publish Maschine");
+                        this.publishNode();
+                        Console.WriteLine("Publish Maschine finished.");
                         firstReadFinished = true;
                     }
+
+                }                //Opc.Ua.ServiceResultException: BadNotConnected
+                //BadNotConnected
+                catch (Opc.Ua.ServiceResultException ex2)
+                {
                     
+                    Console.WriteLine("Message:" + ex2.Message);
+                    if (ex2.Message == "BadNotConnected")
+                    {
+                        Console.WriteLine("Reconnecting OPC");
+                        _ = this.client.ConnectAsync(this.client.opcServerUrl).Result;
+                    }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
                     ReadInProgress = false;
                     this.connected = false;
-                   
                 }
             } else
             {

@@ -179,7 +179,7 @@ namespace UmatiGateway.OPC
 
             try
             {
-                if (m_session != null && m_session.Connected == true)
+                if (/*m_session != null && m_session.Connected == true*/ false)
                 {
                     m_output.WriteLine("Session already connected!");
                 }
