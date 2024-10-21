@@ -34,6 +34,8 @@ namespace UmatiGateway.OPC
             Console.WriteLine("Reading Configuration");
             this.configuration = new ConfigurationReader().ReadConfiguration();
             this.opcServerUrl = this.configuration.opcServerEndpoint;
+            this.opcUser = this.configuration.opcUser;
+            this.opcPwd = this.configuration.opcPassword;
             this.readExtraLibs = this.configuration.readExtraLibs; 
             this.MqttProvider.connectionString = this.configuration.mqttServerEndpopint;
             this.MqttProvider.user = this.configuration.mqttUser;
@@ -43,6 +45,8 @@ namespace UmatiGateway.OPC
             this.MqttProvider.mqttPrefix = this.configuration.mqttPrefix;
             this.MqttProvider.singleThreadPolling = this.configuration.singleThreadPolling;
             this.MqttProvider.PollTimer = this.configuration.pollTime;
+            this.opcUser = this.configuration.opcUser;
+            this.opcPwd = this.configuration.opcPassword;
             foreach (PublishedNode publishedNode in configuration.publishedNodes)
             {
                 this.MqttProvider.publishedNodes.Add(publishedNode);
@@ -72,6 +76,8 @@ namespace UmatiGateway.OPC
         public bool AutoAccept { get; set; } = true;
         #endregion
 
+        public String opcUser = "";
+        public String opcPwd = "";
         public Tree BrowseTree = new Tree();
         public Configuration configuration = new Configuration();
         public Configuration loadedConfiguration = new Configuration();
@@ -192,8 +198,12 @@ namespace UmatiGateway.OPC
                     EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
                     EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
                     ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
+                    UserIdentity userIdentity = new UserIdentity();
+                    if (!String.IsNullOrWhiteSpace(this.opcUser))
+                    {
+                        userIdentity = new UserIdentity(this.opcUser, this.opcPwd);
+                    }
                     
-
                     // Create the session
                     Session session = await Session.Create(
                         m_configuration,
@@ -202,7 +212,7 @@ namespace UmatiGateway.OPC
                         false,
                         m_configuration.ApplicationName,
                         30 * 60 * 1000,
-                        new UserIdentity(),
+                        userIdentity,
                         //null,
                         null
                     );
