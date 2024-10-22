@@ -132,7 +132,7 @@
     <None Update="Configuration\Files\LocalFlatglassConfigHegla.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
-    <None Update="Configuration\Files\LocalFlatglassConfig.xml">
+    <None Update="Configuration\Files\LocalWhConfig.xml">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Configuration\UmatiGatewayConfig.xml">

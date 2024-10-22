@@ -20,6 +20,11 @@ using static UmatiGateway.OPC.MqttProvider;
 using System.Reflection;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Configuration;
+using Opc.Ua.Client;
+using System.IO;
+using System.Text.Json.Nodes;
+using System.Timers;
+using Org.BouncyCastle.Asn1.Ocsp;
 
 
 namespace UmatiGateway.OPC{
@@ -53,8 +58,13 @@ namespace UmatiGateway.OPC{
         private bool ReadInProgress = false;
         public bool singleThreadPolling = false;
         public bool ConnectedOnce = false;
-        public int PollTimer = 2000;
+        public int PollTimer = 60000;
         public bool TimerSetup = false;
+        private Dictionary<NodeId, MqttSubscription> subscriptions = new Dictionary<NodeId, MqttSubscription>();
+        public volatile JObject machine = new JObject();
+        private string InstanceNSU = "";
+        private string TypeBrowseName = "";
+        private JArray IdentificationArray = new JArray();
         public MqttProvider(Client client){
             this.client = client;
             this.mqttClient = mqttFactory.CreateMqttClient();
@@ -104,7 +114,9 @@ namespace UmatiGateway.OPC{
                     this.onlineMachines.Add(new NodeId(publishedNode.nodeId, (ushort)namespaceIndex));
                 }
             }
+            this.doPublish();
             aTimer.Start();
+            
         }
         public void Reconnect() {
             if(!connected) {
@@ -358,6 +370,7 @@ namespace UmatiGateway.OPC{
             }
         }
 
+
         public void publishNode()
         {
             try
@@ -377,6 +390,7 @@ namespace UmatiGateway.OPC{
                                 if (TypeDefinitionNode != null)
                                 {
                                     this.WriteMessage(body, this.getInstanceNsu(machine), TypeDefinitionNode.BrowseName.Name);
+                                    this.machine = body;
                                 }
                             }
                         }
@@ -391,7 +405,79 @@ namespace UmatiGateway.OPC{
                 //this.connected = false;
                 throw;
             }
-        } 
+        }
+        public void publishNodeAfterSubscription()
+        {
+            try
+            {
+                foreach (NodeId machine in this.onlineMachines)
+                {
+                    this.WriteMessage(this.machine, this.InstanceNSU, this.TypeBrowseName);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                //this.connected = false;
+                throw;
+            }
+        }
+        private JToken createJSON(NodeId nodeId)
+        {
+            JObject jObject = new JObject();
+            JObject childObject = new JObject();
+            if(nodeId != null)
+            {
+                Node? childNode = this.client.ReadNode(nodeId);
+                if(childNode != null)
+                {
+                    if (childNode.NodeClass == NodeClass.Variable)
+                    {
+                        object dataValue = getDataValueAsObject(nodeId);
+                        bool isProperty = false;
+                        if (this.client.getTypeDefinition(nodeId) == VariableTypeIds.PropertyType)
+                        {
+                            isProperty = true;
+                        }
+                        if (isProperty)
+                        {
+                            if (dataValue is string)
+                            {
+                                return (string)dataValue;
+                            }
+                            else if (dataValue is JObject)
+                            {
+                                return (JObject)dataValue;
+                            }
+                            else if (dataValue is JArray)
+                            {
+                                return (JArray)dataValue;
+                            }
+                        }
+                        else
+                        {
+                            JObject valueObject = new JObject();
+                            if (dataValue is string)
+                            {
+                                valueObject.Add("value", (string)dataValue);
+                            }
+                            else if (dataValue is JObject)
+                            {
+                                valueObject.Add("value", (JObject)dataValue);
+                            }
+                            else if (dataValue is JArray)
+                            {
+                                valueObject.Add("value", (JArray)dataValue);
+                            }
+                            createJSON(childObject, nodeId);
+                            valueObject.Add("properties", childObject);
+                            return valueObject;
+                        }
+                    }
+                }
+            }
+            return jObject;
+        }
         private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
         {
             List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
@@ -419,6 +505,11 @@ namespace UmatiGateway.OPC{
                     {
                         object dataValue = getDataValueAsObject(child);
                         bool isProperty = false;
+                        if (!subscriptions.ContainsKey(child))
+                        {
+                            uint subscription = this.client.SubscribeToDataChanges(child, this.updateDataValue);
+                            this.subscriptions.Add(child,new MqttSubscription(child, jObject, browseName, subscription));
+                        }
                         if (this.client.getTypeDefinition(child) == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
@@ -461,6 +552,17 @@ namespace UmatiGateway.OPC{
             }
 
         }
+        public void publishIdentificationObject()
+        {
+            try
+            {
+                this.WriteIdentification(this.IdentificationArray, this.InstanceNSU, this.TypeBrowseName);
+            } catch(Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                throw;
+            }
+        }
         public void publishIdentification() {
             try
             {
@@ -469,44 +571,32 @@ namespace UmatiGateway.OPC{
                 {
                     if (machine != null)
                     {
-                        JObject body = new JObject();
-                        createJSON(body, machine);
-                        Node? machineNode = this.client.ReadNode(machine);
-                        if (machineNode != null)
                         {
-                            NodeId? typedefinition = this.client.getTypeDefinition(machine);
-                            if (typedefinition != null)
+                            List<NodeId> identificationNodes = this.client.BrowseLocalNodeIds(machine, BrowseDirection.Forward, (int)NodeClass.Object, ReferenceTypeIds.HierarchicalReferences, true, ObjectTypeIds.FolderType);
+                            foreach (NodeId child in identificationNodes)
                             {
-                                Node? TypeDefinitionNode = this.client.ReadNode(typedefinition);
-                                if (TypeDefinitionNode != null)
+                                Node? childNode = this.client.ReadNode(child);
+                                if (childNode != null)
                                 {
-                                    List <NodeId> identificationNodes = this.client.BrowseLocalNodeIds(machine, BrowseDirection.Forward, (int)NodeClass.Object, ReferenceTypeIds.HierarchicalReferences, true, ObjectTypeIds.FolderType);
-                                    foreach(NodeId child in identificationNodes)
+                                    if (childNode.BrowseName.Name == "Identification")
                                     {
-                                        Node? childNode = this.client.ReadNode(child);
-                                        if (childNode != null)
-                                        {
-                                            if (childNode.BrowseName.Name == "Identification")
-                                            {
-                                                JObject data = new JObject();
-                                                JObject ident = new JObject();
-                                                createJSON(ident, child);
-                                                data.Add("Data", ident);
-                                                data.Add("MachineId", this.getInstanceNsu(machine));
-                                                data.Add("ParentId", "nsu=http:_2F_2Fopcfoundation.org_2FUA_2FMachinery_2F;i=1001");
-                                                data.Add("Topic", this.mqttPrefix + "/" + this.clientId + "/" + TypeDefinitionNode.BrowseName.Name + "/" + this.getInstanceNsu(machine));
-                                                data.Add("TypeDefinition", TypeDefinitionNode.BrowseName.Name);
-                                                identificationArray.Add(data);
-                                            }
-                                        }
+                                        JObject data = new JObject();
+                                        JObject ident = new JObject();
+                                        createJSON(ident, child);
+                                        data.Add("Data", ident);
+                                        data.Add("MachineId", this.InstanceNSU);
+                                        data.Add("ParentId", "nsu=http:_2F_2Fopcfoundation.org_2FUA_2FMachinery_2F;i=1001");
+                                        data.Add("Topic", this.mqttPrefix + "/" + this.clientId + "/" + this.TypeBrowseName + "/" + this.InstanceNSU);
+                                        data.Add("TypeDefinition", this.TypeBrowseName);
+                                        identificationArray.Add(data);
                                     }
-                                    this.WriteIdentification(identificationArray, this.getInstanceNsu(machine), TypeDefinitionNode.BrowseName.Name);
                                 }
                             }
+                            this.WriteIdentification(identificationArray, this.InstanceNSU, this.TypeBrowseName);
+                            this.IdentificationArray = identificationArray;
                         }
                     }
                 }
-                
             }
             catch (Exception e)
             {
@@ -1216,60 +1306,16 @@ namespace UmatiGateway.OPC{
                 this.typeDefinition = typeDefinition;
             }
         }
-        private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
+        private void doPublish()
         {
             if (this.connected)
             {
                 try
                 {
-                    if (firstReadFinished)
+                    if (!firstReadFinished)
                     {
-
-                        if (singleThreadPolling)
-                        {
-                            if (!ReadInProgress)
-                            {
-                                ReadInProgress = true;
-                                Console.WriteLine("Publish BadList");
-                                this.publishBadList();
-                                Console.WriteLine("Publish Bad List finish.");
-                                Console.WriteLine("Publish Client Online");
-                                this.publishClientOnline();
-                                Console.WriteLine("Publish Client Online finish.");
-                                Console.WriteLine("Publish Online Machines");
-                                this.publishOnlineMachines();
-                                Console.WriteLine("Publish Online Machines finish.");
-                                Console.WriteLine("Publish Identification");
-                                this.publishIdentification();
-                                Console.WriteLine("Publish Identification finish.");
-                                Console.WriteLine("Publish Maschine");
-                                this.publishNode();
-                                Console.WriteLine("Publish Maschine finished.");
-                                ReadInProgress = false;
-                            }
-                        }
-                        else
-                        {
-                            Console.WriteLine("Publish BadList");
-                            this.publishBadList();
-                            Console.WriteLine("Publish Bad List finish.");
-                            Console.WriteLine("Publish Client Online");
-                            this.publishClientOnline();
-                            Console.WriteLine("Publish Client Online finish.");
-                            Console.WriteLine("Publish Online Machines");
-                            this.publishOnlineMachines();
-                            Console.WriteLine("Publish Online Machines finish.");
-                            Console.WriteLine("Publish Identification");
-                            this.publishIdentification();
-                            Console.WriteLine("Publish Identification finish.");
-                            Console.WriteLine("Publish Maschine");
-                            this.publishNode();
-                            Console.WriteLine("Publish Maschine finished.");
-                        }
-                    }
-                    if (firstRead)
-                    {
-                        firstRead = false;
+                        Console.WriteLine("Read InstanceNsu and BrowseName");
+                        this.ReadInstanceNsuAndBrowseName();
                         Console.WriteLine("Publish BadList");
                         this.publishBadList();
                         Console.WriteLine("Publish Bad List finish.");
@@ -1287,12 +1333,37 @@ namespace UmatiGateway.OPC{
                         Console.WriteLine("Publish Maschine finished.");
                         firstReadFinished = true;
                     }
+                    else
+                    {
+                        //Detect OPC disconnect
+                        _ = this.client.ReadNode(ObjectIds.Server);
+                        Console.WriteLine("Publish BadList");
+                        this.publishBadList();
+                        Console.WriteLine("Publish Bad List finish.");
+                        Console.WriteLine("Publish Client Online");
+                        this.publishClientOnline();
+                        Console.WriteLine("Publish Client Online finish.");
+                        Console.WriteLine("Publish Online Machines");
+                        this.publishOnlineMachines();
+                        Console.WriteLine("Publish Online Machines finish.");
+                        Console.WriteLine("Publish Identification Object");
+                        this.publishIdentificationObject();
+                        Console.WriteLine("Publish Identification Object finish.");
+                        Console.WriteLine("Publish Maschine Object");
+                        this.publishNodeAfterSubscription();
+                        Console.WriteLine("Publish Maschine Object finished.");
+                    }
 
-                }                //Opc.Ua.ServiceResultException: BadNotConnected
+                }
+                //Opc.Ua.ServiceResultException: BadNotConnected
                 //BadNotConnected
                 catch (Opc.Ua.ServiceResultException ex2)
                 {
-                    
+                    this.firstReadFinished = false;
+                    this.TypeBrowseName = "";
+                    this.InstanceNSU = "";
+                    this.subscriptions.Clear();
+                    this.client.subscription = null;
                     Console.WriteLine("Message:" + ex2.Message);
                     if (ex2.Message == "BadNotConnected")
                     {
@@ -1300,13 +1371,17 @@ namespace UmatiGateway.OPC{
                         _ = this.client.ConnectAsync(this.client.opcServerUrl).Result;
                     }
                 }
+                catch (MQTTnet.Exceptions.MqttClientNotConnectedException ex)
+                {
+                    Console.WriteLine(ex.ToString());
+                    this.connected = false;
+                }
                 catch (Exception ex)
                 {
                     Console.WriteLine(ex.ToString());
-                    ReadInProgress = false;
-                    this.connected = false;
                 }
-            } else
+            }
+            else
             {
                 try
                 {
@@ -1322,6 +1397,45 @@ namespace UmatiGateway.OPC{
                 }
             }
         }
+        private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
+        {
+            this.doPublish();
+        }
+        private void ReadInstanceNsuAndBrowseName()
+        {
+            try
+            {
+                foreach (NodeId machine in this.onlineMachines)
+                {
+                    if (machine != null)
+                    {
+                        Node? machineNode = this.client.ReadNode(machine);
+                        if (machineNode != null)
+                        {
+                            NodeId? typedefinition = this.client.getTypeDefinition(machine);
+                            if (typedefinition != null)
+                            {
+                                Node? TypeDefinitionNode = this.client.ReadNode(typedefinition);
+                                if (TypeDefinitionNode != null)
+                                {
+                                    this.InstanceNSU = this.getInstanceNsu(machine);
+                                    this.TypeBrowseName = TypeDefinitionNode.BrowseName.Name ;
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                //this.connected = false;
+                throw;
+            }
+
+        }
         private Boolean IsPlaceholder()
         {
             return false;
@@ -1332,6 +1446,44 @@ namespace UmatiGateway.OPC{
             {
                 Console.WriteLine(message);
             }
+        }
+        private void updateDataValue(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs monitoredItemsArgs)
+        {
+            if(this.subscriptions.TryGetValue(monitoredItem.ResolvedNodeId, out MqttSubscription? subscription))
+            {
+                if(subscription != null && monitoredItem != null)
+                {
+                    string completePath = subscription.parent.Path + "." + subscription.browseName;
+                    Console.WriteLine("Changed Value for:" + completePath);
+                    JToken? token = this.machine.SelectToken(completePath, errorWhenNoMatch: false);
+                    if(token != null)
+                    {
+                        JToken replaceToken = this.createJSON(monitoredItem.ResolvedNodeId);
+                        token.Replace(replaceToken);
+                        this.publishNodeAfterSubscription();
+                    } else
+                    {
+                        //Console.WriteLine("Not Found token " + completePath);
+                    }
+                }
+            } else
+            {
+                Console.WriteLine("Unable to find subscription: " + monitoredItem.ResolvedNodeId);
+            }
+        }
+    }
+    public class MqttSubscription
+    {
+        public NodeId NodeId { get; set; }
+        public uint Subscriptionhandle { get; set; }
+        public JObject parent;
+        public String browseName;
+
+        public MqttSubscription(NodeId nodeId, JObject parent, String browseName, uint SubscriptionHandle) {
+            this.NodeId = nodeId;
+            this.parent = parent;
+            this.browseName = browseName;
+            this.Subscriptionhandle = SubscriptionHandle;
         }
     }
 }

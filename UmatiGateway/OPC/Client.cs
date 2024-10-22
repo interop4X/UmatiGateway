@@ -81,6 +81,7 @@ namespace UmatiGateway.OPC
         public Tree BrowseTree = new Tree();
         public Configuration configuration = new Configuration();
         public Configuration loadedConfiguration = new Configuration();
+        public Subscription? subscription = null;
 
         public MqttProvider MqttProvider;
 
@@ -800,17 +801,18 @@ namespace UmatiGateway.OPC
                 // Create a subscription for receiving data change notifications
 
                 // Define Subscription parameters
-                Subscription subscription = new Subscription(m_session.DefaultSubscription);
+                if (subscription == null)
+                {
+                    subscription = new Subscription(m_session.DefaultSubscription);
+                    subscription.DisplayName = "Subscription for NodeIds";
+                    subscription.PublishingEnabled = true;
+                    subscription.PublishingInterval = 1000;
+                    m_session.AddSubscription(subscription);
+                    // Create the subscription on Server side
+                    subscription.Create();
+                    subscriptionId = subscription.Id;
+                }
 
-                subscription.DisplayName = string.Format("Subscription for NodeId: {0}", nodeId);
-                subscription.PublishingEnabled = true;
-                subscription.PublishingInterval = 1000;
-
-                m_session.AddSubscription(subscription);
-
-                // Create the subscription on Server side
-                subscription.Create();
-                subscriptionId = subscription.Id;
                 m_output.WriteLine("New Subscription created with SubscriptionId = {0}.", subscription.Id);
 
                 // Create MonitoredItems for data changes (Reference Server)
@@ -819,7 +821,7 @@ namespace UmatiGateway.OPC
                 // Int32 Node - Objects\CTT\Scalar\Simulation\Int32
                 intMonitoredItem.StartNodeId = nodeId;
                 intMonitoredItem.AttributeId = Attributes.Value;
-                intMonitoredItem.DisplayName = "Localized Text";
+                intMonitoredItem.DisplayName = "Subscription";
                 intMonitoredItem.SamplingInterval = 1000;
                 intMonitoredItem.Notification += eventHandler;
 
