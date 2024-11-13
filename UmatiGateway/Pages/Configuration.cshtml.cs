@@ -18,7 +18,7 @@ namespace UmatiGateway.Pages
         }
         public void OnGet()
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             this.configuration = client.configuration;
             this.loadedConfiguration = client.loadedConfiguration;
         }
@@ -35,13 +35,13 @@ namespace UmatiGateway.Pages
         }
         public IActionResult OnPostLoad(string FileContent)
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             ConfigurationReader configReader = new ConfigurationReader();
             this.loadedConfiguration = configReader.ReadConfiguration(FileContent);
             client.loadedConfiguration = this.loadedConfiguration;
             return RedirectToPage();
         }
-        private Client getClient()
+        private UmatiGatewayApp getClient()
         {
             string? mySessionId = HttpContext.Session.GetString("SessionId");
             if (mySessionId == null)
@@ -53,7 +53,7 @@ namespace UmatiGateway.Pages
             {
                 this.SessionId = mySessionId;
             }
-            Client client = ClientFactory.getClient(this.SessionId);
+            UmatiGatewayApp client = ClientFactory.getClient(this.SessionId);
             return client;
         }
     }

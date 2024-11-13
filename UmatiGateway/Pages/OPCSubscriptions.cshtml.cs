@@ -19,7 +19,7 @@ namespace UmatiGateway.Pages
         }
         public void OnGet()
         {
-            Client? client = this.getClient();
+            UmatiGatewayApp? client = this.getClient();
             if(client != null)
             {
                 client.BrowseRootNode();
@@ -32,7 +32,7 @@ namespace UmatiGateway.Pages
         }
         public IActionResult OnPostPublishNode(string uuid)
         {
-            Client? client = this.getClient();
+            UmatiGatewayApp? client = this.getClient();
             if (client != null)
             {
                 this.BrowseTree = client.BrowseTree;
@@ -47,7 +47,7 @@ namespace UmatiGateway.Pages
         }
         public IActionResult OnPostBrowseSelectedTreeNode(string uuid)
         {
-             Client? client = this.getClient();
+             UmatiGatewayApp? client = this.getClient();
              if (client != null)
              {
                 this.BrowseTree = client.BrowseTree;
@@ -70,9 +70,9 @@ namespace UmatiGateway.Pages
              }
             return new PageResult();
         }
-        private Client? getClient()
+        private UmatiGatewayApp? getClient()
         {
-            Client? client = null;
+            UmatiGatewayApp? client = null;
             string? mySessionId = HttpContext.Session.GetString("SessionId");
             if (mySessionId != null)
             {
@@ -83,7 +83,7 @@ namespace UmatiGateway.Pages
         public TreeNode? GetForUid(string? uid)
         {
             if (uid == null) {  return null; }
-            Client? client = this.getClient();
+            UmatiGatewayApp? client = this.getClient();
             if (client != null)
             {
                 this.BrowseTree = client.BrowseTree;

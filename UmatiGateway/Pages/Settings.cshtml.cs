@@ -18,12 +18,12 @@ namespace UmatiGateway.Pages
         }
         public void OnGet()
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             this.configuration = client.configuration;
         }
         public IActionResult OnPostSave(string configFilePath, bool? AutoStart, bool? UseGMSResultEncoding, bool? ReadExtraLibs)
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             this.configuration = client.configuration;
             if (AutoStart == null)
             {
@@ -54,7 +54,7 @@ namespace UmatiGateway.Pages
             configurationWriter.WriteConfiguration(configuration);
             return new PageResult();
         }
-        private Client getClient()
+        private UmatiGatewayApp getClient()
         {
             string? mySessionId = HttpContext.Session.GetString("SessionId");
             if (mySessionId == null)
@@ -66,7 +66,7 @@ namespace UmatiGateway.Pages
             {
                 this.SessionId = mySessionId;
             }
-            Client client = ClientFactory.getClient(this.SessionId);
+            UmatiGatewayApp client = ClientFactory.getClient(this.SessionId);
             return client;
         }
     }

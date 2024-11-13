@@ -15,10 +15,17 @@ using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace UmatiGateway.OPC
 {
-    public class Client
+    public class UmatiGatewayApp
     {
+        public List<UmatiGatewayAppListener> umatiGatewayAppListeners = new List<UmatiGatewayAppListener> ();
+        public BlockingTransition blockingTransition = new BlockingTransition("","","", false);
         #region Constructors
-        public Client(ApplicationConfiguration configuration, TextWriter writer, Action<IList, IList> validateResponse)
+
+        public void AddUmatiGatewayAppListener(UmatiGatewayAppListener umatiGatewayAppListener)
+        {
+            this.umatiGatewayAppListeners.Add(umatiGatewayAppListener);
+        }
+        public UmatiGatewayApp(ApplicationConfiguration configuration, TextWriter writer, Action<IList, IList> validateResponse)
         {
             m_validateResponse = validateResponse;
             m_output = writer;
@@ -183,62 +190,103 @@ namespace UmatiGateway.OPC
         public async Task<bool> ConnectAsync(string serverUrl)
         {
             if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
-
-            try
+            if (!this.blockingTransition.isBlocking)
             {
-                if (/*m_session != null && m_session.Connected == true*/ false)
+                this.blockingTransition = new BlockingTransition("Connecting OPC", $"Connecting to {serverUrl}","", true);
+                this.blockingTransitionChange(this.blockingTransition);
+                try
                 {
-                    m_output.WriteLine("Session already connected!");
+                    if (/*m_session != null && m_session.Connected == true*/ false)
+                    {
+                        m_output.WriteLine("Session already connected!");
+                    }
+                    else
+                    {
+                        m_output.WriteLine("Connecting to... {0}", serverUrl);
+
+                        // Get the endpoint by connecting to server's discovery endpoint.
+                        // Try to find the first endopint with security.
+                        EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
+                        EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
+                        ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
+                        UserIdentity userIdentity = new UserIdentity();
+                        if (!String.IsNullOrWhiteSpace(this.opcUser))
+                        {
+                            userIdentity = new UserIdentity(this.opcUser, this.opcPwd);
+                        }
+
+                        // Create the session
+                        Session session = await Session.Create(
+                            m_configuration,
+                            endpoint,
+                            false,
+                            false,
+                            m_configuration.ApplicationName,
+                            30 * 60 * 1000,
+                            userIdentity,
+                            //null,
+                            null
+                        );
+
+                        // Assign the created session
+                        if (session != null && session.Connected)
+                        {
+                            m_session = session;
+                        }
+
+                        // Session created successfully.
+                        m_output.WriteLine("New Session Created with SessionName = {0}", m_session.SessionName);
+                    }
+                    this.TypeDictionaries = new TypeDictionaries(this);
+                    this.TypeDictionaries.ReadExtraLibs = this.readExtraLibs;
+                    this.blockingTransition.Message = "Read Type Dictionaries";
+                    this.blockingTransition.Detail = "Read Binaries";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    //this.TypeDictionaries.ReadTypeDictionary(false);
+                    Console.WriteLine("Read Binaries");
+                    this.TypeDictionaries.ReadOpcBinary();
+                    this.blockingTransition.Detail = "Read DataTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read DataTypes");
+                    this.TypeDictionaries.ReadDataTypes();
+                    this.blockingTransition.Detail = "Read EventTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read EventTypes");
+                    this.TypeDictionaries.ReadEventTypes();
+                    this.blockingTransition.Detail = "Read InterfaceTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read InterfaceTypes");
+                    this.TypeDictionaries.ReadInterfaceTypes();
+                    this.blockingTransition.Detail = "Read ObjectTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read ObjectTypes");
+                    this.TypeDictionaries.ReadObjectTypes();
+                    this.blockingTransition.Detail = "Read ReferenceTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read ReferenceTypes");
+                    this.TypeDictionaries.ReadReferenceTypes();
+                    this.blockingTransition.Detail = "Read VariableTypes";
+                    this.blockingTransitionChange(this.blockingTransition);
+                    Console.WriteLine("Read VariableTypes");
+                    this.TypeDictionaries.ReadVariableTypes();
+                    //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
+                    //this.ComplexTypeSystem.Load().Wait();
+
+                    return true;
                 }
-                else
+                catch (Exception ex)
                 {
-                    m_output.WriteLine("Connecting to... {0}", serverUrl);
-
-                    // Get the endpoint by connecting to server's discovery endpoint.
-                    // Try to find the first endopint with security.
-                    EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
-                    EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
-                    ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
-                    UserIdentity userIdentity = new UserIdentity();
-                    if (!String.IsNullOrWhiteSpace(this.opcUser))
-                    {
-                        userIdentity = new UserIdentity(this.opcUser, this.opcPwd);
-                    }
-                    
-                    // Create the session
-                    Session session = await Session.Create(
-                        m_configuration,
-                        endpoint,
-                        false,
-                        false,
-                        m_configuration.ApplicationName,
-                        30 * 60 * 1000,
-                        userIdentity,
-                        //null,
-                        null
-                    );
-
-                    // Assign the created session
-                    if (session != null && session.Connected)
-                    {
-                        m_session = session;
-                    }
-
-                    // Session created successfully.
-                    m_output.WriteLine("New Session Created with SessionName = {0}", m_session.SessionName);
+                    // Log Error
+                    m_output.WriteLine("Create Session Error : {0}", ex.Message);
+                    return false;
                 }
-                this.TypeDictionaries = new TypeDictionaries(this);
-                this.TypeDictionaries.ReadExtraLibs = this.readExtraLibs;
-                this.TypeDictionaries.ReadTypeDictionary(false);
-                //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
-                //this.ComplexTypeSystem.Load().Wait();
-
-                return true;
-            }
-            catch (Exception ex)
+                finally
+                {
+                    this.blockingTransition = new BlockingTransition();
+                }
+            } else
             {
-                // Log Error
-                m_output.WriteLine("Create Session Error : {0}", ex.Message);
+                Console.WriteLine("Allready trying to Connect to OPC Server");
                 return false;
             }
         }
@@ -860,6 +908,19 @@ namespace UmatiGateway.OPC
         private readonly TextWriter m_output;
         private readonly Action<IList, IList> m_validateResponse;
         #endregion
+        private void blockingTransitionChange(BlockingTransition blockingTransition)
+        {
+            foreach(UmatiGatewayAppListener umatiGatewayAppListener in this.umatiGatewayAppListeners)
+            {
+                try
+                {
+                    umatiGatewayAppListener.blockingTransitionChanged(blockingTransition);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Unable to notify Listener: {ex.StackTrace}");
+                }
+            }
+        }
     }
-
 }

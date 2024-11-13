@@ -35,7 +35,7 @@ namespace UmatiGateway.Pages
 
         public IActionResult OnPostConnect(string ConnectionUrl, string Port, string MqttUser, string MqttPassword, string MqttClientId, string MqttPrefix)
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             client.setMqttConnectionType("tcp");
             client.setMqttConnectionUrl(ConnectionUrl);
             client.setMqttConnectionPort(Port);
@@ -49,14 +49,14 @@ namespace UmatiGateway.Pages
         }
         public IActionResult OnPostSave(string ConnectionUrl, string MqttPrefix)
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             client.setMqttPrefix(Prefix);
             this.UpdateFromMqttClient();
             return RedirectToPage();
         }
         public IActionResult OnPostDisconnect()
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             client.DisconnectMqtt();
             return RedirectToPage();
         }
@@ -65,7 +65,7 @@ namespace UmatiGateway.Pages
         {
             this.UpdateFromMqttClient();
         }
-        private Client getClient()
+        private UmatiGatewayApp getClient()
         {
             string? mySessionId = HttpContext.Session.GetString("SessionId");
             if (mySessionId == null)
@@ -77,12 +77,12 @@ namespace UmatiGateway.Pages
             {
                 this.SessionId = mySessionId;
             }
-            Client client = ClientFactory.getClient(this.SessionId);
+            UmatiGatewayApp client = ClientFactory.getClient(this.SessionId);
             return client;
         }
         private void UpdateFromMqttClient()
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             ConnectionType = client.getMqttConnectionType();
             ConnectionUrl = client.getMqttConnectionUrl();
             Port = client.getMqttConnectionPort();

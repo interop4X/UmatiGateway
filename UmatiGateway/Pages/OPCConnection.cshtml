@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "OPC Connection";
 }
+<body>
 <h1>OPC Connection</h1>
 
 <p>Configure the connection to the OPC Server.</p>
@@ -25,6 +26,9 @@
     <label for="ConnectionStatus" class="settings-label">@Model.LabelConnectionStatus</label>
     <input id="ConnectionStatus" type="text" class="settings-input" value="@Model.ConnectionStatus" readonly />
     </fieldset>
-</div>
+    </div>
 </form>
+
+</body>
+
 

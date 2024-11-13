@@ -1,11 +1,15 @@
+using UmatiGateway;
 using UmatiGateway.OPC;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddRazorPages();
+builder.Services.AddControllers();
 var ClientFactory = new ClientFactory();
 builder.Services.AddSingleton<ClientFactory>(ClientFactory);
+SSEController sseController = new SSEController(ClientFactory);
+builder.Services.AddSingleton<UmatiGateway.SSEController>(sseController);
 builder.Services.AddSession();
 builder.Services.AddMemoryCache();
 
@@ -27,6 +31,7 @@ app.UseRouting();
 app.UseAuthorization();
 app.UseSession();
 
+app.MapControllers();
 app.MapRazorPages();
 
 app.Run();

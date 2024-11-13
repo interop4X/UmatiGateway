@@ -20,10 +20,10 @@ namespace UmatiGateway.Pages
 
         public void OnGet()
         {
-            Client client = this.getClient(clientFactory);
+            UmatiGatewayApp client = this.getClient(clientFactory);
             //client.StartUp();
         }
-        private Client getClient(ClientFactory clientFactory)
+        private UmatiGatewayApp getClient(ClientFactory clientFactory)
         {
             string SessionId = "";
             string? mySessionId = HttpContext.Session.GetString("SessionId");
@@ -36,7 +36,7 @@ namespace UmatiGateway.Pages
             {
                 SessionId = mySessionId;
             }
-            Client client = clientFactory.getClient(SessionId);
+            UmatiGatewayApp client = clientFactory.getClient(SessionId);
             return client;
         }
     }

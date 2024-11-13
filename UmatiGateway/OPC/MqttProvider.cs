@@ -25,9 +25,14 @@ using System.IO;
 using System.Text.Json.Nodes;
 using System.Timers;
 using Org.BouncyCastle.Asn1.Ocsp;
+using System.Xml;
+using Org.BouncyCastle.Utilities;
 
 
 namespace UmatiGateway.OPC{
+    /// <summary>
+    /// This class reads the data from the OPC UA Server and provides it via Mqtt.
+    /// </summary>
     public class MqttProvider {
         private MqttFactory mqttFactory = new MqttFactory();
         private IMqttClient? mqttClient = null;
@@ -47,11 +52,11 @@ namespace UmatiGateway.OPC{
         public List<PublishedNode> publishedNodes = new List<PublishedNode>();
         public List<NodeId> onlineMachines = new List<NodeId>();
 
-        private Client client;
+        private UmatiGatewayApp client;
         private Dictionary<NodeId, string> MqttValues = new Dictionary<NodeId, string>();
         private Boolean connected = false;
         private Boolean subscriptionscreated = false;
-        private System.Timers.Timer aTimer;
+        private System.Timers.Timer aTimer = new System.Timers.Timer();
         private bool firstRead = true;
         private bool firstReadFinished = false;
         private bool debug = false;
@@ -60,27 +65,21 @@ namespace UmatiGateway.OPC{
         public bool ConnectedOnce = false;
         public int PollTimer = 60000;
         public bool TimerSetup = false;
+        public Dictionary <NodeId, IList<string>> errors = new Dictionary<NodeId, IList<string>>();
         private Dictionary<NodeId, MqttSubscription> subscriptions = new Dictionary<NodeId, MqttSubscription>();
         public volatile JObject machine = new JObject();
         private string InstanceNSU = "";
         private string TypeBrowseName = "";
         private JArray IdentificationArray = new JArray();
-        public MqttProvider(Client client){
+        private JSONConverter jsonConverter = new JSONConverter();
+        private bool shortenVariables = true;
+
+        public MqttProvider(UmatiGatewayApp client){
             this.client = client;
             this.mqttClient = mqttFactory.CreateMqttClient();
-            /*user = "fva/matthias2";
-            pwd = "";
-            connectionString = "localhost";
-            clientId = "fva/matthias2";
-            mqttPrefix = "umati/v2";
-            connectionPort = "1883";*/
-           
-            
+        }
 
-        }
-        public bool isConnected() {
-            return this.connected;
-        }
+        // Connection/Disconnection
         public void Disconnect()
         {
             Console.WriteLine("Disconnecting");
@@ -92,8 +91,7 @@ namespace UmatiGateway.OPC{
         {
             if (!TimerSetup)
             { 
-                aTimer = new System.Timers.Timer(PollTimer);
-                // Hook up the Elapsed event for the timer. 
+                aTimer.Interval = PollTimer;
                 aTimer.Elapsed += OnTimedEvent;
                 aTimer.AutoReset = true;
                 aTimer.Enabled = true;
@@ -219,36 +217,7 @@ namespace UmatiGateway.OPC{
             }
         }
 
-        public JObject SortJsonKeysRecursively(JObject jsonObj)
-        {
-            // Erstelle ein neues JObject mit sortierten Keys
-            JObject sortedJsonObj = new JObject(
-                jsonObj.Properties()
-                       .OrderBy(p => p.Name)
-                       .Select(p => new JProperty(p.Name, SortToken(p.Value)))
-            );
-            return sortedJsonObj;
-        }
-        // Methode, um die Sortierung je nach Token-Typ (JObject, JArray oder JValue) rekursiv anzuwenden
-        public JToken SortToken(JToken token)
-        {
-            if (token is JObject)
-            {
-                // Sortiere rekursiv, wenn es sich um ein JObject handelt
-                return SortJsonKeysRecursively((JObject)token);
-            }
-            else if (token is JArray)
-            {
-                // Für Arrays: Überprüfe, ob die einzelnen Elemente sortiert werden müssen
-                var array = (JArray)token;
-                return new JArray(array.Select(SortToken));
-            }
-            else
-            {
-                // Wenn es sich um einen Wert (JValue) handelt, bleibt der Wert gleich
-                return token;
-            }
-        }
+        //Publishing
 
         public bool WriteMessage(JObject jObject, string machineId, String type) {
             try {
@@ -292,9 +261,6 @@ namespace UmatiGateway.OPC{
                 throw;
             }
         }
-        public void Start() {
-
-        }
         public void publishOnlineMachines()
         {
             try
@@ -322,18 +288,29 @@ namespace UmatiGateway.OPC{
         public bool publishBadList() {
             try {
                 string MyTopic = this.mqttPrefix + "/" + this.clientId + "/" + "bad_list/errors";
+                JArray errorArray = new JArray();
+                foreach(KeyValuePair<NodeId, IList<string>> entry in this.errors)
+                {
+                    JObject errorObject = new JObject();
+                    errorObject.Add("NodeId", entry.Key.ToString());
+                    JArray messageArray = new JArray();
+                    foreach (string message in entry.Value)
+                    {
+                        messageArray.Add(message);
+                    }
+                    errorObject.Add("Messages", messageArray);
+                    errorArray.Add(errorObject);
+                }
                 MqttApplicationMessage applicationMessage = new MqttApplicationMessageBuilder()
                 .WithTopic(MyTopic)
-                .WithPayload("[]")
+                .WithPayload(errorArray.ToString())
                 .Build();
                 if(this.mqttClient != null) {
                     _ = this.mqttClient.PublishAsync(applicationMessage, CancellationToken.None).Result;
                 }
                 return true;
             } catch(Exception e) {
-                //logger.Error ("Unable to publish BadList", e);
-                //this.connected = false;
-                //return false;
+                Console.WriteLine ("Unable to publish BadList", e.ToString());
                 throw;
             }
         }
@@ -363,9 +340,7 @@ namespace UmatiGateway.OPC{
             }
             catch (Exception e)
             {
-                //logger.Error("Unable to publish ClientOnline", e);
-                //this.connected = false;
-                //return false;
+                Console.WriteLine("Unable to publish ClientOnline", e.ToString());
                 throw;
             }
         }
@@ -402,7 +377,6 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                //this.connected = false;
                 throw;
             }
         }
@@ -418,7 +392,6 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                //this.connected = false;
                 throw;
             }
         }
@@ -435,15 +408,27 @@ namespace UmatiGateway.OPC{
                     {
                         object dataValue = getDataValueAsObject(nodeId);
                         bool isProperty = false;
-                        if (this.client.getTypeDefinition(nodeId) == VariableTypeIds.PropertyType)
+                        bool shorten = false;
+                        NodeId typeDefinition = this.client.getTypeDefinition(nodeId);
+                        if (typeDefinition == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
-                        }
-                        if (isProperty)
+                        } else
                         {
-                            if (dataValue is string)
+                            if(shortenVariables)
                             {
-                                return (string)dataValue;
+                                List<NodeId> nodeIds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
+                                if(nodeIds.Count == 0)
+                                {
+                                    shorten = true;
+                                }
+                            }
+                        }
+                        if (isProperty || shorten)
+                        {
+                            if (dataValue is JValue)
+                            {
+                                return (JValue)dataValue;
                             }
                             else if (dataValue is JObject)
                             {
@@ -457,9 +442,9 @@ namespace UmatiGateway.OPC{
                         else
                         {
                             JObject valueObject = new JObject();
-                            if (dataValue is string)
+                            if (dataValue is JValue)
                             {
-                                valueObject.Add("value", (string)dataValue);
+                                valueObject.Add("value", (JValue)dataValue);
                             }
                             else if (dataValue is JObject)
                             {
@@ -503,22 +488,35 @@ namespace UmatiGateway.OPC{
                     }
                     if (childNode.NodeClass == NodeClass.Variable)
                     {
-                        object dataValue = getDataValueAsObject(child);
-                        bool isProperty = false;
+                        JToken dataValue = getDataValueAsObject(child);
                         if (!subscriptions.ContainsKey(child))
                         {
                             uint subscription = this.client.SubscribeToDataChanges(child, this.updateDataValue);
                             this.subscriptions.Add(child,new MqttSubscription(child, jObject, browseName, subscription));
                         }
-                        if (this.client.getTypeDefinition(child) == VariableTypeIds.PropertyType)
+                        bool isProperty = false;
+                        bool shorten = false;
+                        NodeId typeDefinition = this.client.getTypeDefinition(child);
+                        if (typeDefinition == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
                         }
-                        if(isProperty)
+                        else
                         {
-                            if (dataValue is string)
+                            if (shortenVariables)
                             {
-                                jObject.Add(browseName, (string)dataValue);
+                                List<NodeId> nodeIds = this.client.BrowseLocalNodeIds(child, BrowseDirection.Forward, (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
+                                if (nodeIds.Count == 0)
+                                {
+                                    shorten = true;
+                                }
+                            }
+                        }
+                        if (isProperty || shorten)
+                        {
+                            if (dataValue is JValue)
+                            {
+                                jObject.Add(browseName, (JValue)dataValue);
                             }
                             else if (dataValue is JObject)
                             {
@@ -531,9 +529,9 @@ namespace UmatiGateway.OPC{
                         } else
                         {
                             JObject valueObject = new JObject();
-                            if (dataValue is string)
+                            if (dataValue is JValue)
                             {
-                                valueObject.Add("value", (string)dataValue);
+                                valueObject.Add("value", (JValue)dataValue);
                             }
                             else if (dataValue is JObject)
                             {
@@ -601,105 +599,22 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                //this.connected = false;
                 throw;
             } 
         }
 
-        public void createJsonForIdentification(JObject jObject, StructuredNode structuredNode, string machineId, string parentId, string topic) {
-            if(structuredNode.childNodes.Count > 0) {
-                JObject obj = new JObject();
-                foreach (StructuredNode sn in structuredNode.childNodes) {
-                    createJson(obj, sn);
-                }
-                jObject.Add("Data", obj);
-                jObject.Add("MachineId", machineId);
-                jObject.Add("ParentId", parentId);
-                jObject.Add("Topic", topic);
-                jObject.Add("TypeDefinition", "WireHarnessMachineType");
-            }
-        }
-        public void createJson(JObject jObject, StructuredNode structuredNode) {
-            //Current State extra Treading
-            if(structuredNode.browsename.Name == "CurrentState") {
-                JObject obj = new JObject();
-                Object pobj = getDataValueAsObject(structuredNode.nodeId);
-                if(pobj is String) {
-                    obj.Add("value", (String)getDataValueAsObject(structuredNode.nodeId));
-                } else if (pobj is JObject) {
-                    obj.Add("value", (JObject)getDataValueAsObject(structuredNode.nodeId));
-                }
-                jObject.Add(structuredNode.browsename.Name, obj);
-                return;
-            }
-            if(structuredNode.childNodes.Count > 0) {
-                JObject obj = new JObject();
-                foreach (StructuredNode sn in structuredNode.childNodes) {
-                    createJson(obj, sn);
-                }
-                jObject.Add(structuredNode.browsename.Name, obj);
-            } else if (structuredNode.placeholderNodes.Count > 0){
-                JObject obj = new JObject();
-                JObject placeHolderObjects = new JObject(); 
-                foreach(KeyValuePair<string, List<PlaceHolderNode>> entry in structuredNode.placeholderNodes) {
-                   List<PlaceHolderNode> placeholdernodes = entry.Value;
-                   //Extra Treatment Jobs
-                   if(entry.Key == "<OrderedObject>") {
-                        obj.Add(entry.Key, placeHolderObjects);
-                        jObject.Add(structuredNode.browsename.Name, obj);
-                        foreach(PlaceHolderNode placeholdernode in placeholdernodes) {
-                            JObject jobObject = new JObject();
-                            jobObject.Add("$TypeDefinition", placeholdernodes[0].typeDefinition);
-                            foreach(StructuredNode child in placeholdernode.childNodes) {
-                                if(child.browsename.Name == "JobId") {
-                                    Object jobId = getDataValueAsObject(child.nodeId);
-                                    if(jobId is String) {
-                                        jobObject.Add(child.browsename.Name, (String) jobId);
-                                    } else if (jobId is JObject) {
-                                        jobObject.Add(child.browsename.Name, (JObject) jobId);
-                                    }
-                                }
-                                if(child.browsename.Name == "State") {
-                                    createJson(jobObject, child);
-                                }
-                            }
-                            placeHolderObjects.Add(placeholdernode.browseName.Name, jobObject);
-                        }
-                        return;
-                   }
-                   foreach(PlaceHolderNode placeholdernode in placeholdernodes) {
-                        Object pobj = getDataValueAsObject(placeholdernode.nodeId);
-                        if(pobj is String) {
-                            placeHolderObjects.Add(placeholdernode.browseName.Name, (String) pobj);
-                        } else if (pobj is JObject) {
-                            placeHolderObjects.Add(placeholdernode.browseName.Name, (JObject) pobj);
-                        }
-                   }
-                   obj.Add(entry.Key, placeHolderObjects);
-                }
-                jObject.Add(structuredNode.browsename.Name, obj);
-            } else {
-                Object obj = getDataValueAsObject(structuredNode.nodeId);
-                if(obj is String) {
-                    jObject.Add(structuredNode.browsename.Name, (string)obj);
-                } else if (obj is JObject) {
-                    jObject.Add(structuredNode.browsename.Name, (JObject)obj);
-                } else if (obj is JArray) {
-                    jObject.Add(structuredNode.browsename.Name, (JArray)obj);
-                }
-            }
-        }
-        public object getDataValueAsObject(NodeId nodeId) {
+        /// <summary>
+        /// Reads the DataValue of a NodeId and returns it as object.
+        /// </summary>
+        /// <param name="nodeId"> The Node Id of the Node for that the DataValue is retrieved.</param>
+        /// <returns>A JToken representing the DataValue.</returns>
+        public JToken getDataValueAsObject(NodeId nodeId) {
             try
             {
-                this.Debug(nodeId.ToString());
-                if(nodeId == new NodeId(6028, 7))
-                {
-                    this.Debug("Here");
-                }
                 Node? node = this.client.ReadNode(nodeId);
                 if (node == null)
                 {
+                    this.AddError(nodeId, $"Unable to retrieve Node for nodeId: {nodeId}");
                     return "";
                 }
                 if (node.NodeClass != NodeClass.Variable)
@@ -708,74 +623,118 @@ namespace UmatiGateway.OPC{
                 }
                 DataValue dv = this.client.ReadValue(nodeId);
                 Object value = dv.Value;
-                if (value is LocalizedText)
+                switch (value)
                 {
-                    LocalizedText localizedText = (LocalizedText)value;
-                    JObject jobj = new JObject();
-                    jobj.Add("locale", localizedText.Locale);
-                    jobj.Add("text", localizedText.Text);
-                    return jobj;
-                }
-                else if (value is String)
-                {
-                    String str = (String)value;
-                    return str;
-                }
-                else if (value is UInt16)
-                {
-                    UInt16 number = (UInt16)value;
-                    return number.ToString();
-                }
-                if(value is ExtensionObject) {
-                    JObject jobject = new JObject();
-                    ExtensionObject eto = (ExtensionObject) value;
-                    ExtensionObjectEncoding encoding = eto.Encoding;
-                    if(encoding == ExtensionObjectEncoding.Binary) {
-                        ExpandedNodeId binaryEncodingType = eto.TypeId; 
-                        if((uint)binaryEncodingType.Identifier == 5008) {
-                            //this.decodeResult(jobject, eto);
-                            jobject = this.decode(eto);
-                            //return this.decode(eto);
-                        } else
+                    case Boolean booleanValue: return this.jsonConverter.Convert(booleanValue);
+                    case Byte byteValue: return this.jsonConverter.Convert(byteValue);
+                    case byte[] byteStringvalue: return this.jsonConverter.Convert(byteStringvalue);
+                    case DateTime dateTimeValue: return this.jsonConverter.Convert(dateTimeValue);
+                    case DiagnosticInfo diagnosticInfoValue: return this.jsonConverter.Convert(diagnosticInfoValue);
+                    case Double doubleValue: return this.jsonConverter.Convert(doubleValue);
+                    case ExpandedNodeId expandedNodeId: return this.jsonConverter.Convert(expandedNodeId);
+                    case float floatValue: return this.jsonConverter.Convert(floatValue);
+                    case Guid guidValue: return this.jsonConverter.Convert(guidValue);
+                    case Int16 int16Value: return this.jsonConverter.Convert(int16Value);
+                    case Int32 int32Value: return this.jsonConverter.Convert(int32Value);
+                    case Int64 int64Value: return this.jsonConverter.Convert(int64Value);
+                    case LocalizedText localizedTextValue: return this.jsonConverter.Convert(localizedTextValue);
+                    case NodeId nodeIdValue: return this.jsonConverter.Convert(nodeIdValue);
+                    case QualifiedName qualifiedNameValue: return this.jsonConverter.Convert(qualifiedNameValue);
+                    case SByte sByteValue: return this.jsonConverter.Convert(sByteValue);
+                    case StatusCode statusCodeValue: return this.jsonConverter.Convert(statusCodeValue);
+                    case String stringValue: return this.jsonConverter.Convert(stringValue);
+                    case UInt16 uint16Value: return this.jsonConverter.Convert(uint16Value);
+                    case UInt32 uint32Value: return this.jsonConverter.Convert(uint32Value);
+                    case UInt64 uint64Value: return this.jsonConverter.Convert(uint64Value);
+                    //TODO investigate in this...
+                    case Variant variantValue: return variantValue.ToString();
+                    case XmlElement xmlElementValue: return this.jsonConverter.Convert(xmlElementValue);
+                    case ExtensionObject extensionObjectValue:
+                        JObject jobject = new JObject();
+                        ExtensionObject eto = (ExtensionObject)value;
+                        ExtensionObjectEncoding encoding = eto.Encoding;
+                        if (encoding == ExtensionObjectEncoding.Binary)
                         {
-                            jobject = this.decode(eto);
-                            //this.decode(eto);
+                                jobject = this.decode(eto);
                         }
-                    }
-                    return jobject;
+                        else if (encoding == ExtensionObjectEncoding.Json)
+                        {
+                            this.AddError(nodeId, "JSON encoding is currently not implemented for ExtensionObjects.");
+                        }
+                        else if (encoding == ExtensionObjectEncoding.Xml)
+                        {
+                            this.AddError(nodeId, "XML encoding is currently not implemented for ExtensionObjects.");
+                        }
+                        else if (encoding == ExtensionObjectEncoding.EncodeableObject)
+                        {
+                            return this.decodeEncodeable(eto, nodeId);
+                        }
+                        return jobject;
+                    default: this.AddError(nodeId, $"Unimplemented Type for nodeId: {nodeId.ToString()}."); return "";
                 }
-                if(value is ExtensionObject[])
-                {
-                    ExtensionObject[] etos = (ExtensionObject[]) value;
-                    JArray array = new JArray();
-                    for(int i = 0; i < etos.Length; i++)
-                    {
-                        array.Add(this.decode(etos[i]));
-                    }
-                    return array;
-                }
-                if(value is VariantCollection)
-                {
-                    this.Debug("Here");
-                }
-                return "";
             }
             catch (Exception ex)
             {
                 return ex.ToString();
             }
         }
-        public void generaleDecodeResultObject(JObject obj, ExtensionObject eto)
-        {
-
-        }
-        
-        public JObject decode( Object obj)
+        /// <summary>
+        /// Decodes an IEncodeable DataType. This is only relevant for the build in DataTypes from
+        /// the UA Base namespace.
+        /// </summary>
+        /// <param name="extensionObject">The extensionObject that is to be decoded.</param>
+        /// <param name="nodeId">The nodeId for debug purposes.</param>
+        /// <returns>An JObject representing the DataType.</returns>
+        public JToken decodeEncodeable(ExtensionObject extensionObject, NodeId? nodeId)
         {
             JObject jObject = new JObject();
-            return jObject;
+            if (extensionObject.Body is IEncodeable)
+            {
+                IEncodeable iEncodeable = (IEncodeable)extensionObject.Body;
+                switch (iEncodeable)
+                {
+                    case Argument argument: return this.jsonConverter.Convert(argument);
+                    case EUInformation euInformation: return this.jsonConverter.Convert(euInformation);
+                    case Opc.Ua.Range range: return this.jsonConverter.Convert(range);
+                    default: this.AddError(nodeId, $"The type of the iEncodeable is not implemented {iEncodeable.GetType()}"); return new JObject();
+                }
+            } else
+            {
+                this.AddError(nodeId, "The Encodeable Object is not of Type: IEncodeable");
+                return new JObject();
+            }
         }
-
+        /// <summary>
+        /// Adds an error to the Error List.
+        /// </summary>
+        /// <param name="nodeId">The nodeId on that the Error occured.</param>
+        /// <param name="message">The message related to the error.</param>
+        private void AddError(NodeId? nodeId, string message)
+        {
+            if (nodeId != null)
+            {   
+                if (this.errors.ContainsKey(nodeId))
+                {
+                    this.errors.TryGetValue(nodeId, out var errorList);
+                    if (errorList != null)
+                    {
+                        if(!errorList.Contains(message))
+                        {
+                            errorList.Add(message);
+                        }
+                    } else
+                    {
+                        errorList = new List<string>();
+                        errorList.Add(message);
+                        this.errors.Add(nodeId, errorList);
+                    }
+                }
+                else
+                {
+                    this.errors.Add(nodeId, new List<string> { message });
+                }
+            }
+        }
         public object decode(Variant variant)
         {
             JObject jObject = new JObject();
@@ -901,7 +860,7 @@ namespace UmatiGateway.OPC{
                     ExtensionObject dtd = dtn.DataTypeDefinition;
                     if (gdc != null)
                     {
-                        BinaryDecoder BinaryDecoder = new BinaryDecoder((byte[])eto.Body, ServiceMessageContext.GlobalContext);
+                        BinaryDecoder BinaryDecoder = new BinaryDecoder((byte[])(eto.Body), ServiceMessageContext.GlobalContext);
                         jObject = this.decode(BinaryDecoder, gdc);
                     }
                 }
@@ -1231,21 +1190,6 @@ namespace UmatiGateway.OPC{
             return jObject;
         }
 
-        private string getInstanceNsu(StructuredNode machineNode) {
-            string nsuString = "nsu=";
-            string nameSpace = "";
-            string identifier = "";
-            NodeId machineId = machineNode.nodeId;
-            ushort namespaceIndex = machineId.NamespaceIndex;
-            nameSpace = "Instancenamespace";
-            nameSpace = nameSpace.Replace("/", "_2F");
-            if(machineId.IdType == IdType.Numeric) {
-                identifier = "i=" + (uint)machineId.Identifier;
-            } else if(machineId.IdType == IdType.String) {
-                identifier = "s=" + (string)machineId.Identifier;
-            }
-            return nsuString + nameSpace + ";" + identifier;
-        }
         private string GetNameSpaceForIndex(ushort NamespaceIndex)
         {
             string ns = "";
@@ -1276,36 +1220,8 @@ namespace UmatiGateway.OPC{
             }
             return nsuString + nameSpace + ";" + identifier;
         }
-        bool IsBitSet(UInt32 value, int pos){
-            return ((value >> pos) & 1) != 0;
-        }
 
-        public class StructuredNode
-        {
-            public NodeId nodeId;
-            public QualifiedName browsename;
-            public List<StructuredNode> childNodes = new List<StructuredNode>();
-            public string? placeholderTypeDefinition = null;
-            public Dictionary<string, List<PlaceHolderNode>> placeholderNodes = new Dictionary<string, List<PlaceHolderNode>>();
-            public StructuredNode(QualifiedName browseName, NodeId nodeId)
-            {
-                this.browsename = browseName;
-                this.nodeId = nodeId;
-            }
-        }
-        public class PlaceHolderNode
-        {
-            public QualifiedName browseName;
-            public NodeId nodeId;
-            public string typeDefinition;
-            public List<StructuredNode> childNodes = new List<StructuredNode>();
-            public PlaceHolderNode(QualifiedName browseName, NodeId nodeId, string typeDefinition)
-            {
-                this.browseName = browseName;
-                this.nodeId = nodeId;
-                this.typeDefinition = typeDefinition;
-            }
-        }
+
         private void doPublish()
         {
             if (this.connected)
@@ -1397,7 +1313,7 @@ namespace UmatiGateway.OPC{
                 }
             }
         }
-        private void OnTimedEvent(Object source, System.Timers.ElapsedEventArgs e)
+        private void OnTimedEvent(Object? source, System.Timers.ElapsedEventArgs e)
         {
             this.doPublish();
         }
@@ -1431,22 +1347,11 @@ namespace UmatiGateway.OPC{
             catch (Exception e)
             {
                 Console.WriteLine(e.ToString());
-                //this.connected = false;
                 throw;
             }
 
         }
-        private Boolean IsPlaceholder()
-        {
-            return false;
-        }
-        private void Debug(String message)
-        {
-            if(debug)
-            {
-                Console.WriteLine(message);
-            }
-        }
+
         private void updateDataValue(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs monitoredItemsArgs)
         {
             if(this.subscriptions.TryGetValue(monitoredItem.ResolvedNodeId, out MqttSubscription? subscription))
@@ -1469,6 +1374,50 @@ namespace UmatiGateway.OPC{
             } else
             {
                 Console.WriteLine("Unable to find subscription: " + monitoredItem.ResolvedNodeId);
+            }
+        }
+
+        // Helper Methods
+        private void Debug(String message)
+        {
+            if (debug)
+            {
+                Console.WriteLine(message);
+            }
+        }
+        bool IsBitSet(UInt32 value, int pos)
+        {
+            return ((value >> pos) & 1) != 0;
+        }
+        public JObject SortJsonKeysRecursively(JObject jsonObj)
+        {
+            // Erstelle ein neues JObject mit sortierten Keys
+            JObject sortedJsonObj = new JObject(
+                jsonObj.Properties()
+                       .OrderBy(p => p.Name)
+                       .Select(p => new JProperty(p.Name, SortToken(p.Value)))
+            );
+            return sortedJsonObj;
+        }
+
+        // Methode, um die Sortierung je nach Token-Typ (JObject, JArray oder JValue) rekursiv anzuwenden
+        public JToken SortToken(JToken token)
+        {
+            if (token is JObject)
+            {
+                // Sortiere rekursiv, wenn es sich um ein JObject handelt
+                return SortJsonKeysRecursively((JObject)token);
+            }
+            else if (token is JArray)
+            {
+                // Für Arrays: Überprüfe, ob die einzelnen Elemente sortiert werden müssen
+                var array = (JArray)token;
+                return new JArray(array.Select(SortToken));
+            }
+            else
+            {
+                // Wenn es sich um einen Wert (JValue) handelt, bleibt der Wert gleich
+                return token;
             }
         }
     }

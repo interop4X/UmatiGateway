@@ -2,13 +2,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.Extensions.Localization;
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Resources;
 using UmatiGateway.OPC;
 
 namespace UmatiGateway.Pages
 {
-    public class OPCConnectionModel : PageModel
+    public class OPCConnectionModel : PageModel, UmatiGatewayAppListener
     {
         public string LabelConnectionUrl { get;} = "Connection URL:";
         public string LabelSessionId { get; } = "SessionId:";
@@ -21,6 +22,8 @@ namespace UmatiGateway.Pages
         public string OPCSessionName { get; private set; } = "";
         public string OPCSessionId { get; private set; } = "";
         public string ConnectionStatus { get; private set; } = "Not Connected";
+
+        private static readonly BlockingCollection<string> UpdateQueue = new BlockingCollection<string>();
         public OPCConnectionModel(ClientFactory ClientFactory)
         {
             this.ClientFactory = ClientFactory;
@@ -32,7 +35,7 @@ namespace UmatiGateway.Pages
         public IActionResult OnPostConnect(String ConnectionUrl)
         {
             this.ConnectionUrl = ConnectionUrl;
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             if (ConnectionUrl != null) {
                 _= client.ConnectAsync(this.ConnectionUrl).Result;
             }
@@ -41,7 +44,7 @@ namespace UmatiGateway.Pages
         }
         public IActionResult OnPostDisconnect()
         {
-            Client client = this.getClient();
+            UmatiGatewayApp client = this.getClient();
             client.Disconnect();
             this.UpdateClientData();
             return new PageResult();
@@ -50,7 +53,7 @@ namespace UmatiGateway.Pages
         {
             this.UpdateClientData();
         }
-        private Client getClient()
+        private UmatiGatewayApp getClient()
         {
             string? mySessionId = HttpContext.Session.GetString("SessionId");
             if (mySessionId == null)
@@ -62,7 +65,7 @@ namespace UmatiGateway.Pages
             {
                 this.SessionId = mySessionId;
             }
-            Client client = ClientFactory.getClient(this.SessionId);
+            UmatiGatewayApp client = ClientFactory.getClient(this.SessionId);
             return client;
         }
         private void UpdateClientData()
@@ -77,7 +80,8 @@ namespace UmatiGateway.Pages
             }
             else
             {
-                Client client = ClientFactory.getClient(mySessionId);
+                UmatiGatewayApp client = ClientFactory.getClient(mySessionId);
+                client.AddUmatiGatewayAppListener(this);
                 this.SessionId = mySessionId;
                 if (client.Session != null)
                 {
@@ -88,6 +92,45 @@ namespace UmatiGateway.Pages
                 }
                 this.ConnectionUrl = client.getOpcConnectionUrl();
             }
+        }
+        public IActionResult OnGetStreamUpdates()
+        {
+            Response.ContentType = "text/event-stream";
+            Response.Headers.Append("Cache-Control", "no-cache");
+            Response.Headers.Append("Connection", "keep-alive");
+
+            try
+            {
+                // Loop indefinitely, checking for updates
+                foreach (var update in UpdateQueue.GetConsumingEnumerable())
+                {
+                    if (Response.HttpContext.RequestAborted.IsCancellationRequested)
+                        break; // Exit if the client disconnects
+
+                    var message = $"data: {update}\n\n";
+                    Response.WriteAsync(message);
+                    Response.Body.FlushAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error in SSE connection: {ex.Message}");
+            }
+
+            return new EmptyResult();
+        }
+
+        public void blockingTransitionChanged(BlockingTransition blockingTransition)
+        {
+            var bt = new
+            {
+                transition = blockingTransition.Transition,
+                message = blockingTransition.Message,
+                detail = blockingTransition.Detail,
+                isBlocking = blockingTransition.isBlocking
+            };
+            string jsonData = System.Text.Json.JsonSerializer.Serialize(bt);
+            UpdateQueue.Add(jsonData); // Add update to the queue
         }
     }
 }

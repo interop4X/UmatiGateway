@@ -139,21 +139,7 @@
                             </fieldset>
                         </form>
                     </div>
-                    <div>
-                        <form>
-                            <fieldset>
-                                <legend>Referenzed By</legend>
-                                <table>
-                                    @foreach (var child in selectedNode.children)
-                                    {
-                                        <tr>
-                                            <td><input value="@child.NodeData.node.BrowseName" readonly /></td>
-                                        </tr>
-                                    }
-                                </table>
-                            </fieldset>
-                        </form>
-                    </div>
+          
                 } else
                 {
                     <div>
