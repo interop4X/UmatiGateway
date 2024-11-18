@@ -17,8 +17,8 @@ namespace UmatiGateway.OPC
 {
     public class UmatiGatewayApp
     {
-        public List<UmatiGatewayAppListener> umatiGatewayAppListeners = new List<UmatiGatewayAppListener> ();
-        public BlockingTransition blockingTransition = new BlockingTransition("","","", false);
+        public List<UmatiGatewayAppListener> umatiGatewayAppListeners = new List<UmatiGatewayAppListener>();
+        public BlockingTransition blockingTransition = new BlockingTransition("", "", "", false);
         #region Constructors
 
         public void AddUmatiGatewayAppListener(UmatiGatewayAppListener umatiGatewayAppListener)
@@ -43,7 +43,7 @@ namespace UmatiGateway.OPC
             this.opcServerUrl = this.configuration.opcServerEndpoint;
             this.opcUser = this.configuration.opcUser;
             this.opcPwd = this.configuration.opcPassword;
-            this.readExtraLibs = this.configuration.readExtraLibs; 
+            this.readExtraLibs = this.configuration.readExtraLibs;
             this.MqttProvider.connectionString = this.configuration.mqttServerEndpopint;
             this.MqttProvider.user = this.configuration.mqttUser;
             this.MqttProvider.pwd = this.configuration.mqttPassword;
@@ -65,7 +65,7 @@ namespace UmatiGateway.OPC
                 Console.WriteLine("Create Mqtt Connection");
                 this.MqttProvider.Connect();
             }
-        } 
+        }
         #endregion
 
         #region Public Properties
@@ -192,7 +192,7 @@ namespace UmatiGateway.OPC
             if (serverUrl == null) throw new ArgumentNullException(nameof(serverUrl));
             if (!this.blockingTransition.isBlocking)
             {
-                this.blockingTransition = new BlockingTransition("Connecting OPC", $"Connecting to {serverUrl}","", true);
+                this.blockingTransition = new BlockingTransition("Connecting OPC", $"Connecting to {serverUrl}", "", true);
                 this.blockingTransitionChange(this.blockingTransition);
                 try
                 {
@@ -271,7 +271,6 @@ namespace UmatiGateway.OPC
                     this.TypeDictionaries.ReadVariableTypes();
                     //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
                     //this.ComplexTypeSystem.Load().Wait();
-
                     return true;
                 }
                 catch (Exception ex)
@@ -353,7 +352,7 @@ namespace UmatiGateway.OPC
         public Node? ReadNode(NodeId nodeId)
         {
             Node? node = null;
-            if (m_session != null && m_session.Connected){
+            if (m_session != null && m_session.Connected) {
                 try {
                     node = m_session.ReadNode(nodeId);
                 } catch (Exception e) {
@@ -362,7 +361,7 @@ namespace UmatiGateway.OPC
             }
             return node;
         }
-        
+
         public List<NodeId> BrowseLocalNodeIds(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
         {
             List<NodeId> nodeList = new List<NodeId>();
@@ -377,35 +376,7 @@ namespace UmatiGateway.OPC
             }
             return nodeList;
         }
-        public NodeId BrowseFirstLocalNodeIdWithType(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes, NodeId typeDefinition)
-        {
-            NodeId nodeId = null;
-            BrowseResultCollection browseResults = BrowseNode(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
-            foreach (BrowseResult browseResult in browseResults)
-            {
-                ReferenceDescriptionCollection references = browseResult.References;
-                foreach (ReferenceDescription reference in references)
-                {
-                    nodeId = new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex);
-                }
-            }
-            return nodeId;
-        }
-        public NodeId BrowseFirstLocalNodeIdWithTypeDefinition(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes, NodeId expectedTypeDefinition)
-        {
-            NodeId filteredNodeId = null;
-            List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
-            foreach(NodeId nodeId in nodeIds)
-            {
-                NodeId typeDefinition = getTypeDefinition(nodeId);
-                if(typeDefinition == expectedTypeDefinition)
-                {
-                    filteredNodeId = nodeId;
-                    break;
-                }
-            }
-            return filteredNodeId;
-        }
+
         public NamespaceTable GetNamespaceTable()
         {
             DataValue dv = m_session.ReadValue(VariableIds.Server_NamespaceArray);
@@ -418,7 +389,7 @@ namespace UmatiGateway.OPC
             List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
             foreach (NodeId nodeId in nodeIds)
             {
-                NodeId typeDefinition = getTypeDefinition(nodeId);
+                NodeId typeDefinition = BrowseTypeDefinition(nodeId);
                 if (typeDefinition == expectedTypeDefinition)
                 {
                     filteredNodeIds.Add(nodeId);
@@ -432,10 +403,10 @@ namespace UmatiGateway.OPC
             List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
             return nodeIds;
         }
-        public NodeId getTypeDefinition(NodeId nodeId)
+        public NodeId BrowseTypeDefinition(NodeId nodeId)
         {
             NodeId typeDefinition = null;
-            BrowseResultCollection browseResults = BrowseNode(nodeId, BrowseDirection.Forward, (uint)NodeClass.ObjectType | (uint) NodeClass.VariableType, ReferenceTypes.HasTypeDefinition, false);
+            BrowseResultCollection browseResults = BrowseNode(nodeId, BrowseDirection.Forward, (uint)NodeClass.ObjectType | (uint)NodeClass.VariableType, ReferenceTypes.HasTypeDefinition, false);
             foreach (BrowseResult browseResult in browseResults)
             {
                 ReferenceDescriptionCollection references = browseResult.References;
@@ -447,6 +418,38 @@ namespace UmatiGateway.OPC
             }
             return typeDefinition;
         }
+        public List<NodeId> GetOptionalAndMandatoryPlaceholders(NodeId typeDefinition)
+        {
+            List<NodeId> nodeIds = new List<NodeId>();
+            //Look for the Childs
+            BrowseResultCollection browseResultCollection = BrowseNode(typeDefinition, BrowseDirection.Forward, 0, ReferenceTypeIds.HasComponent, true);
+            foreach(BrowseResult browseResult in browseResultCollection)
+            {
+                BrowseDescriptionCollection browseDescriptions = new BrowseDescriptionCollection();
+                foreach (ReferenceDescription reference in browseResult.References)
+                {
+                    NodeId nodeId = (NodeId) reference.NodeId;
+                    browseDescriptions.Add(BrowseUtils.ModellingRuleBrowseDescription(nodeId));
+                }
+                if (browseDescriptions.Count > 0)
+                {
+                    BrowseResultCollection modelRuleCollection = Browse(browseDescriptions);
+                    for (int i = 0; i < modelRuleCollection.Count; i++)
+                    {
+                        BrowseResult modelRuleBrowseResult = modelRuleCollection[i];
+                        foreach (ReferenceDescription modelRuleReference in modelRuleBrowseResult.References)
+                        {
+                            NodeId nodeId = (NodeId)modelRuleReference.NodeId;
+                            if (nodeId == ObjectIds.ModellingRule_MandatoryPlaceholder || nodeId == ObjectIds.ModellingRule_OptionalPlaceholder)
+                            {
+                                nodeIds.Add(browseDescriptions[i].NodeId);
+                            }
+                        }
+                    }
+                }
+            }
+            return nodeIds;
+        }
         public NodeId BrowseLocalNodeId(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
         {
 
@@ -457,22 +460,33 @@ namespace UmatiGateway.OPC
             }
             return null;
         }
-        public List<Node>BrowseNodeList(Node rootNode, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
+
+        public BrowseResultCollection Browse(BrowseDescription browseDescription)
         {
-            List<Node> node = new List<Node>();
-            return node;
+            BrowseDescriptionCollection browseDescriptionCollection = new BrowseDescriptionCollection(new BrowseDescription[] { browseDescription });
+            m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
+            return results;
         }
-        public DataValue ReadValue(NodeId nodeId)
+        public BrowseResultCollection Browse(BrowseDescriptionCollection browseDescriptionCollection)
         {
-            if (!checkSession())
-            {
-                return null;
-            }
-            else
-            {
-                return m_session.ReadValue(nodeId);
-            }
+            m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
+            return results;
         }
+        public List<ExpandedNodeId> BrowseNodeId(BrowseDescription browseDescription, int? filter = null)
+        {
+            List<ExpandedNodeId> nodes = new List<ExpandedNodeId>();
+            BrowseResultCollection browseResultCollection = this.Browse(browseDescription);
+            foreach (BrowseResult browseResult in browseResultCollection)
+            {
+                ReferenceDescriptionCollection references = browseResult.References;
+                foreach (ReferenceDescription reference in references)
+                {
+                    nodes.Add(reference.NodeId);
+                }
+            }
+            return nodes;
+        }
+
         public BrowseResultCollection BrowseNode(NodeId nodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, Boolean includeSubTypes)
         {
             BrowseDescription nodeToBrowse = new BrowseDescription();
@@ -487,194 +501,7 @@ namespace UmatiGateway.OPC
             m_session.Browse(null, null, 10000, nodesToBrowse, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
             return results;
         }
-        public BrowseResultCollection BrowseNode(NodeId nodeId)
-        {
-        
-            BrowseDescription nodeToBrowse = new BrowseDescription();
-            nodeToBrowse.NodeId = nodeId;
-            nodeToBrowse.BrowseDirection = BrowseDirection.Forward;
-            nodeToBrowse.NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable;
-            nodeToBrowse.ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences;
-            nodeToBrowse.IncludeSubtypes = true;
 
-            BrowseDescriptionCollection nodesToBrowse = new BrowseDescriptionCollection();
-            nodesToBrowse.Add(nodeToBrowse);
-            m_session.Browse(null, null, 100, nodesToBrowse,out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
-            return results;
-        }
-        /// <summary>
-        /// Read a list of nodes from Server
-        /// </summary>
-        public void ReadNodes()
-        {
-            if (m_session == null || m_session.Connected == false)
-            {
-                m_output.WriteLine("Session not connected!");
-                return;
-            }
-
-            try
-            {
-                #region Read a node by calling the Read Service
-
-                // build a list of nodes to be read
-                ReadValueIdCollection nodesToRead = new ReadValueIdCollection()
-                {
-                    // Value of ServerStatus
-                    new ReadValueId() { NodeId = Variables.Server_ServerStatus, AttributeId = Attributes.Value },
-                    // BrowseName of ServerStatus_StartTime
-                    new ReadValueId() { NodeId = Variables.Server_ServerStatus_StartTime, AttributeId = Attributes.BrowseName },
-                    // Value of ServerStatus_StartTime
-                    new ReadValueId() { NodeId = Variables.Server_ServerStatus_StartTime, AttributeId = Attributes.Value }
-                };
-
-                // Read the node attributes
-                m_output.WriteLine("Reading nodes...");
-
-                // Call Read Service
-                m_session.Read(
-                    null,
-                    0,
-                    TimestampsToReturn.Both,
-                    nodesToRead,
-                    out DataValueCollection resultsValues,
-                    out DiagnosticInfoCollection diagnosticInfos);
-
-                // Validate the results
-                m_validateResponse(resultsValues, nodesToRead);
-
-                // Display the results.
-                foreach (DataValue result in resultsValues)
-                {
-                    m_output.WriteLine("Read Value = {0} , StatusCode = {1}", result.Value, result.StatusCode);
-                }
-                #endregion
-
-                #region Read the Value attribute of a node by calling the Session.ReadValue method
-                // Read Server NamespaceArray
-                m_output.WriteLine("Reading Value of NamespaceArray node...");
-                DataValue namespaceArray = m_session.ReadValue(Variables.Server_NamespaceArray);
-                // Display the result
-                m_output.WriteLine($"NamespaceArray Value = {namespaceArray}");
-                #endregion
-            }
-            catch (Exception ex)
-            {
-                // Log Error
-                m_output.WriteLine($"Read Nodes Error : {ex.Message}.");
-            }
-        }
-
-        /// <summary>
-        /// Write a list of nodes to the Server
-        /// </summary>
-        public void WriteNodes()
-        {
-            if (m_session == null || m_session.Connected == false)
-            {
-                m_output.WriteLine("Session not connected!");
-                return;
-            }
-
-            try
-            {
-                // Write the configured nodes
-                WriteValueCollection nodesToWrite = new WriteValueCollection();
-
-                // Int32 Node - Objects\CTT\Scalar\Scalar_Static\Int32
-                WriteValue intWriteVal = new WriteValue();
-                intWriteVal.NodeId = new NodeId("ns=2;s=Scalar_Static_Int32");
-                intWriteVal.AttributeId = Attributes.Value;
-                intWriteVal.Value = new DataValue();
-                intWriteVal.Value.Value = (int)100;
-                nodesToWrite.Add(intWriteVal);
-
-                // Float Node - Objects\CTT\Scalar\Scalar_Static\Float
-                WriteValue floatWriteVal = new WriteValue();
-                floatWriteVal.NodeId = new NodeId("ns=2;s=Scalar_Static_Float");
-                floatWriteVal.AttributeId = Attributes.Value;
-                floatWriteVal.Value = new DataValue();
-                floatWriteVal.Value.Value = (float)100.5;
-                nodesToWrite.Add(floatWriteVal);
-
-                // String Node - Objects\CTT\Scalar\Scalar_Static\String
-                WriteValue stringWriteVal = new WriteValue();
-                stringWriteVal.NodeId = new NodeId("ns=2;s=Scalar_Static_String");
-                stringWriteVal.AttributeId = Attributes.Value;
-                stringWriteVal.Value = new DataValue();
-                stringWriteVal.Value.Value = "String Test";
-                nodesToWrite.Add(stringWriteVal);
-
-                // Write the node attributes
-                StatusCodeCollection results = null;
-                DiagnosticInfoCollection diagnosticInfos;
-                m_output.WriteLine("Writing nodes...");
-
-                // Call Write Service
-                m_session.Write(null,
-                                nodesToWrite,
-                                out results,
-                                out diagnosticInfos);
-
-                // Validate the response
-                m_validateResponse(results, nodesToWrite);
-
-                // Display the results.
-                m_output.WriteLine("Write Results :");
-
-                foreach (StatusCode writeResult in results)
-                {
-                    m_output.WriteLine("     {0}", writeResult);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log Error
-                m_output.WriteLine($"Write Nodes Error : {ex.Message}.");
-            }
-        }
-
-        /// <summary>
-        /// Browse Server nodes
-        /// </summary>
-        public void Browse()
-        {
-            if (m_session == null || m_session.Connected == false)
-            {
-                m_output.WriteLine("Session not connected!");
-                return;
-            }
-
-            try
-            {
-                // Create a Browser object
-                Browser browser = new Browser(m_session);
-
-                // Set browse parameters
-                browser.BrowseDirection = BrowseDirection.Forward;
-                browser.NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable;
-                browser.ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences;
-
-                NodeId nodeToBrowse = ObjectIds.Server;
-
-                // Call Browse service
-                m_output.WriteLine("Browsing {0} node...", nodeToBrowse);
-                ReferenceDescriptionCollection browseResults = browser.Browse(nodeToBrowse);
-
-                // Display the results
-                m_output.WriteLine("Browse returned {0} results:", browseResults.Count);
-
-                foreach (ReferenceDescription result in browseResults)
-                {
-                    m_output.WriteLine("     DisplayName = {0}, NodeClass = {1}", result.DisplayName.Text, result.NodeClass);
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log Error
-                m_output.WriteLine($"Browse Error : {ex.Message}.");
-            }
-        }
         public void BrowseRootNode()
         {
             if (!this.BrowseTree.Initialized)
@@ -694,24 +521,6 @@ namespace UmatiGateway.OPC
                 }
             }
 
-        }
-        private JObject decodeDataValue(DataValue dataValue)
-        {
-            JObject jObject = new JObject();
-            if(dataValue.Value is ExtensionObject extensionObject)
-            {
-
-            } else if(dataValue.Value is String stringValue)
-            {
-
-            } else if(dataValue.Value is LocalizedText localizedTextVale)
-            {
-
-            } else
-            {
-                jObject.Add("Error", "Unknown DataValue");
-            }
-            return jObject;
         }
         private JObject decodeComplexType(NodeId nodeId)
         {
@@ -785,54 +594,19 @@ namespace UmatiGateway.OPC
                 }
             }
         }
-        public IList<object> CallMethod(NodeId objectId, NodeId methodId, object[] inputArguments)
+        public DataValue ReadValue(NodeId nodeId)
         {
-            IList<object> outputArguments = null;
-            outputArguments = m_session.Call(objectId, methodId, inputArguments);
-            return outputArguments;
+            if (!checkSession())
+            {
+                return null;
+            }
+            else
+            {
+                return m_session.ReadValue(nodeId);
+            }
         }
+
         /// <summary>
-        /// Call UA method
-        /// </summary>
-        public void CallMethod()
-        {
-            if (m_session == null || m_session.Connected == false)
-            {
-                m_output.WriteLine("Session not connected!");
-                return;
-            }
-
-            try
-            {
-                // Define the UA Method to call
-                // Parent node - Objects\CTT\Methods
-                // Method node - Objects\CTT\Methods\Add
-                NodeId objectId = new NodeId("ns=2;s=Methods");
-                NodeId methodId = new NodeId("ns=2;s=Methods_Add");
-
-                // Define the method parameters
-                // Input argument requires a Float and an UInt32 value
-                object[] inputArguments = new object[] { (float)10.5, (uint)10 };
-                IList<object> outputArguments = null;
-
-                // Invoke Call service
-                m_output.WriteLine("Calling UAMethod for node {0} ...", methodId);
-                outputArguments = m_session.Call(objectId, methodId, inputArguments);
-
-                // Display results
-                m_output.WriteLine("Method call returned {0} output argument(s):", outputArguments.Count);
-
-                foreach (var outputArgument in outputArguments)
-                {
-                    m_output.WriteLine("     OutputValue = {0}", outputArgument.ToString());
-                }
-            }
-            catch (Exception ex)
-            {
-                m_output.WriteLine("Method call error: {0}", ex.Message);
-            }
-        }
-    /// <summary>
         /// Create Subscription and MonitoredItems for DataChanges
         /// </summary>
         public uint SubscribeToDataChanges(NodeId nodeId, MonitoredItemNotificationEventHandler eventHandler)

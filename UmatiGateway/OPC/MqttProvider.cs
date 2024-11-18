@@ -27,6 +27,7 @@ using System.Timers;
 using Org.BouncyCastle.Asn1.Ocsp;
 using System.Xml;
 using Org.BouncyCastle.Utilities;
+using System.Reflection.Metadata;
 
 
 namespace UmatiGateway.OPC{
@@ -358,7 +359,7 @@ namespace UmatiGateway.OPC{
                         createJSON(body, machine);
                         Node? machineNode = this.client.ReadNode(machine);
                         if (machineNode != null) {
-                            NodeId? typedefinition = this.client.getTypeDefinition(machine);
+                            NodeId? typedefinition = this.client.BrowseTypeDefinition(machine);
                             if (typedefinition != null)
                             {
                                 Node? TypeDefinitionNode = this.client.ReadNode(typedefinition);
@@ -409,7 +410,7 @@ namespace UmatiGateway.OPC{
                         object dataValue = getDataValueAsObject(nodeId);
                         bool isProperty = false;
                         bool shorten = false;
-                        NodeId typeDefinition = this.client.getTypeDefinition(nodeId);
+                        NodeId typeDefinition = this.client.BrowseTypeDefinition(nodeId);
                         if (typeDefinition == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
@@ -465,7 +466,14 @@ namespace UmatiGateway.OPC{
         }
         private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
         {
-            List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
+            // Check for OptionalPlaceholder and MandatoryPlaceholder
+            NodeId ptypeDefinition = this.client.BrowseTypeDefinition(nodeId);
+            List<NodeId> optionalMandatoryPlaceholders = this.client.GetOptionalAndMandatoryPlaceholders(ptypeDefinition);
+            if(optionalMandatoryPlaceholders.Count > 0)
+            {
+                Console.WriteLine("Here");
+            }
+            List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);            
             foreach (NodeId child in hierarchicalChilds)
             {
                 Node? childNode = this.client.ReadNode(child);
@@ -496,7 +504,7 @@ namespace UmatiGateway.OPC{
                         }
                         bool isProperty = false;
                         bool shorten = false;
-                        NodeId typeDefinition = this.client.getTypeDefinition(child);
+                        NodeId typeDefinition = this.client.BrowseTypeDefinition(child);
                         if (typeDefinition == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
@@ -1328,7 +1336,7 @@ namespace UmatiGateway.OPC{
                         Node? machineNode = this.client.ReadNode(machine);
                         if (machineNode != null)
                         {
-                            NodeId? typedefinition = this.client.getTypeDefinition(machine);
+                            NodeId? typedefinition = this.client.BrowseTypeDefinition(machine);
                             if (typedefinition != null)
                             {
                                 Node? TypeDefinitionNode = this.client.ReadNode(typedefinition);
@@ -1378,6 +1386,7 @@ namespace UmatiGateway.OPC{
         }
 
         // Helper Methods
+
         private void Debug(String message)
         {
             if (debug)
