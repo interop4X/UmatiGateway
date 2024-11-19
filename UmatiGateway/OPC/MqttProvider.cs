@@ -28,6 +28,7 @@ using Org.BouncyCastle.Asn1.Ocsp;
 using System.Xml;
 using Org.BouncyCastle.Utilities;
 using System.Reflection.Metadata;
+using Org.BouncyCastle.Tls.Crypto;
 
 
 namespace UmatiGateway.OPC{
@@ -469,14 +470,42 @@ namespace UmatiGateway.OPC{
             // Check for OptionalPlaceholder and MandatoryPlaceholder
             NodeId ptypeDefinition = this.client.BrowseTypeDefinition(nodeId);
             List<NodeId> optionalMandatoryPlaceholders = this.client.GetOptionalAndMandatoryPlaceholders(ptypeDefinition);
+            List<PlaceholderNode> placeholderNodes = new List<PlaceholderNode>();
             if(optionalMandatoryPlaceholders.Count > 0)
             {
-                Console.WriteLine("Here");
+                foreach(NodeId placeholder in optionalMandatoryPlaceholders)
+                {
+                    //Console.WriteLine("Placeholder:" + placeholder);
+                    Node? placeholderNode = this.client.ReadNode(placeholder);
+                    if(placeholderNode != null)
+                    {
+                        NodeId? placeHolderTypeDefinition = this.client.BrowseTypeDefinition(placeholder);
+                        string phBrowseName = placeholderNode.BrowseName.Name;
+                        if (!jObject.ContainsKey(phBrowseName)) {
+                            JObject placeholderType = new JObject();
+                            //placeholderType.Add("NodeId: ", placeholder.ToString());
+                            //placeholderType.Add("TypeDefinition: ", placeHolderTypeDefinition.ToString());
+                            jObject.Add(phBrowseName, placeholderType);
+                            List<NodeId> subTypes = new List<NodeId>();
+                            this.client.BrowseAllHierarchicalSubType(placeHolderTypeDefinition, subTypes);
+                            placeholderNodes.Add(new PlaceholderNode(placeholder, placeHolderTypeDefinition, placeholderType, subTypes));
+                        }
+                    }
+                    
+                }
             }
             List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);            
             foreach (NodeId child in hierarchicalChilds)
             {
+                JObject? placeHolderObject = null;
+                NodeId typeDefinition = this.client.BrowseTypeDefinition(child);
                 Node? childNode = this.client.ReadNode(child);
+                foreach(PlaceholderNode placeHolderNode in placeholderNodes) {
+                    if(typeDefinition == placeHolderNode.typeDefinitionNodeId || placeHolderNode.subTypeNodeIds.Contains(typeDefinition))
+                    {
+                        placeHolderObject = placeHolderNode.phList;
+                    }
+                }
                 if (childNode != null)
                 {
                     //String browseName = childNode.BrowseName.ToString();
@@ -491,7 +520,14 @@ namespace UmatiGateway.OPC{
                         }
                         else
                         {
-                            jObject.Add(browseName, childObject);
+                            if (placeHolderObject == null)
+                            {
+                                jObject.Add(browseName, childObject);
+                            } else
+                            {
+                                childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                placeHolderObject.Add(browseName, childObject);
+                            }
                         }
                     }
                     if (childNode.NodeClass == NodeClass.Variable)
@@ -504,7 +540,7 @@ namespace UmatiGateway.OPC{
                         }
                         bool isProperty = false;
                         bool shorten = false;
-                        NodeId typeDefinition = this.client.BrowseTypeDefinition(child);
+                        
                         if (typeDefinition == VariableTypeIds.PropertyType)
                         {
                             isProperty = true;
@@ -524,17 +560,39 @@ namespace UmatiGateway.OPC{
                         {
                             if (dataValue is JValue)
                             {
-                                jObject.Add(browseName, (JValue)dataValue);
+                                if (placeHolderObject == null)
+                                {
+                                    jObject.Add(browseName, (JValue)dataValue);
+                                }
+                                else
+                                {
+                                    childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                }
                             }
                             else if (dataValue is JObject)
                             {
-                                jObject.Add(browseName, (JObject)dataValue);
+                                if (placeHolderObject == null)
+                                {
+                                    jObject.Add(browseName, (JObject)dataValue);
+                                }
+                                else
+                                {
+                                    childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                }
                             }
                             else if (dataValue is JArray)
                             {
-                                jObject.Add(browseName, (JArray)dataValue);
+                                if (placeHolderObject == null)
+                                {
+                                    jObject.Add(browseName, (JArray)dataValue);
+                                }
+                                else
+                                {
+                                    childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                }
                             }
-                        } else
+                        }
+                        else
                         {
                             JObject valueObject = new JObject();
                             if (dataValue is JValue)
@@ -550,7 +608,13 @@ namespace UmatiGateway.OPC{
                                 valueObject.Add("value", (JArray)dataValue);
                             }
                             valueObject.Add("properties", childObject);
-                            jObject.Add(browseName, valueObject);
+                            if (placeHolderObject != null) {
+                                jObject.Add(browseName, valueObject);
+                            }
+                            else
+                            {
+                                childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                            }
                         }
                     }
                 }
@@ -1209,7 +1273,7 @@ namespace UmatiGateway.OPC{
             }
             return ns;
         }
-        private string getInstanceNsu(NodeId nodeId)
+        private string getInstanceNsu(NodeId nodeId, bool replace = true)
         {
             string nsuString = "nsu=";
             string nameSpace = "";
@@ -1217,7 +1281,10 @@ namespace UmatiGateway.OPC{
             NodeId machineId = nodeId;
             ushort namespaceIndex = machineId.NamespaceIndex;
             nameSpace = this.GetNameSpaceForIndex(nodeId.NamespaceIndex);
-            nameSpace = nameSpace.Replace("/", "_2F");
+            if (replace)
+            {
+                nameSpace = nameSpace.Replace("/", "_2F");
+            }
             if (machineId.IdType == IdType.Numeric)
             {
                 identifier = "i=" + (uint)machineId.Identifier;
@@ -1387,6 +1454,21 @@ namespace UmatiGateway.OPC{
 
         // Helper Methods
 
+        private class PlaceholderNode
+        {
+            public NodeId placeholderNodeId;
+            public NodeId typeDefinitionNodeId;
+            public List<NodeId> subTypeNodeIds = new List<NodeId>();
+            public JObject phList;
+            public PlaceholderNode(NodeId placeholderNodeId, NodeId typeDefinitionNodeId, JObject phList, List<NodeId> subTypeNodeIds)
+            {
+                this.placeholderNodeId = placeholderNodeId;
+                this.typeDefinitionNodeId = typeDefinitionNodeId;
+                this.phList = phList;
+                this.subTypeNodeIds = subTypeNodeIds;
+            }
+
+        }
         private void Debug(String message)
         {
             if (debug)

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection.Metadata;
 using System.Text;
 using System.Threading.Tasks;
 using MQTTnet.Exceptions;
@@ -417,6 +418,35 @@ namespace UmatiGateway.OPC
                 }
             }
             return typeDefinition;
+        }
+        public List<NodeId> BrowseSubTypes(NodeId nodeId)
+        {
+            List<NodeId> subTypes = new List<NodeId>();
+            BrowseResultCollection browseResults = BrowseNode(nodeId, BrowseDirection.Forward, (uint)NodeClass.ObjectType | (uint)NodeClass.VariableType, ReferenceTypes.HasSubtype, false);
+            foreach (BrowseResult browseResult in browseResults)
+            {
+                ReferenceDescriptionCollection references = browseResult.References;
+                foreach (ReferenceDescription reference in references)
+                {
+                    subTypes.Add(new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex));
+                }
+            }
+            return subTypes;
+        }
+        public List<NodeId> BrowseAllHierarchicalSubType(NodeId nodeId, List<NodeId> subTypeList)
+        {
+            BrowseResultCollection browseResults = BrowseNode(nodeId, BrowseDirection.Forward, (uint)NodeClass.ObjectType | (uint)NodeClass.VariableType, ReferenceTypes.HasSubtype, false);
+            foreach (BrowseResult browseResult in browseResults)
+            {
+                ReferenceDescriptionCollection references = browseResult.References;
+                foreach (ReferenceDescription reference in references)
+                {
+                    NodeId subTypeId = new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex);
+                    this.BrowseAllHierarchicalSubType(subTypeId, subTypeList);
+                    subTypeList.Add(subTypeId);
+                }
+            }
+            return subTypeList;
         }
         public List<NodeId> GetOptionalAndMandatoryPlaceholders(NodeId typeDefinition)
         {
