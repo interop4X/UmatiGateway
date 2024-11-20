@@ -467,9 +467,36 @@ namespace UmatiGateway.OPC{
         }
         private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
         {
+            // Check if for the Parent a PlaceholderRule applies
+            List<NodeId> optionalMandatoryPlaceholdersOverParent = new List<NodeId>();
+            if (parent != null)
+            {
+                Node? thisNode = this.client.ReadNode(nodeId);
+                if (thisNode != null)
+                {
+                    QualifiedName thisBrowseName = thisNode.BrowseName;
+                    Console.WriteLine(thisBrowseName);
+                    if (thisBrowseName == new QualifiedName("ToolLife", 5))
+                    {
+                        Console.WriteLine("Here");
+                    }
+                    NodeId parentTypeDefinition = this.client.BrowseTypeDefinition(parent);
+                    NodeId? typeNodeIdofNodeID = this.client.BrowseLocalNodeIdWithBrowseName(parentTypeDefinition, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true, thisBrowseName);
+                    if(typeNodeIdofNodeID != null)
+                    {
+                        optionalMandatoryPlaceholdersOverParent = this.client.GetOptionalAndMandatoryPlaceholders(typeNodeIdofNodeID);
+                        if(optionalMandatoryPlaceholdersOverParent.Count > 0)
+                        {
+                            Console.WriteLine("Here");
+                        }
+                    }         
+                }
+
+            }
             // Check for OptionalPlaceholder and MandatoryPlaceholder
             NodeId ptypeDefinition = this.client.BrowseTypeDefinition(nodeId);
             List<NodeId> optionalMandatoryPlaceholders = this.client.GetOptionalAndMandatoryPlaceholders(ptypeDefinition);
+            optionalMandatoryPlaceholders.AddRange(optionalMandatoryPlaceholdersOverParent);
             List<PlaceholderNode> placeholderNodes = new List<PlaceholderNode>();
             if(optionalMandatoryPlaceholders.Count > 0)
             {
@@ -567,6 +594,7 @@ namespace UmatiGateway.OPC{
                                 else
                                 {
                                     childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    placeHolderObject.Add(browseName, childObject);
                                 }
                             }
                             else if (dataValue is JObject)
@@ -578,6 +606,7 @@ namespace UmatiGateway.OPC{
                                 else
                                 {
                                     childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    placeHolderObject.Add(browseName, childObject);
                                 }
                             }
                             else if (dataValue is JArray)
@@ -588,7 +617,8 @@ namespace UmatiGateway.OPC{
                                 }
                                 else
                                 {
-                                    childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    placeHolderObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    placeHolderObject.Add(browseName, childObject);
                                 }
                             }
                         }
@@ -606,14 +636,15 @@ namespace UmatiGateway.OPC{
                             else if (dataValue is JArray)
                             {
                                 valueObject.Add("value", (JArray)dataValue);
-                            }
+                            } 
                             valueObject.Add("properties", childObject);
-                            if (placeHolderObject != null) {
+                            if (placeHolderObject == null) {
                                 jObject.Add(browseName, valueObject);
                             }
                             else
                             {
                                 childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                placeHolderObject.Add(browseName, valueObject);
                             }
                         }
                     }
@@ -695,8 +726,13 @@ namespace UmatiGateway.OPC{
                 }
                 DataValue dv = this.client.ReadValue(nodeId);
                 Object value = dv.Value;
+                if(nodeId == new NodeId(58514, 13))
+                {
+                    Console.WriteLine("Here");
+                }
                 switch (value)
                 {
+                    case null: return this.jsonConverter.GetDefaultNullValue();
                     case Boolean booleanValue: return this.jsonConverter.Convert(booleanValue);
                     case Byte byteValue: return this.jsonConverter.Convert(byteValue);
                     case byte[] byteStringvalue: return this.jsonConverter.Convert(byteStringvalue);
@@ -1305,24 +1341,29 @@ namespace UmatiGateway.OPC{
                 {
                     if (!firstReadFinished)
                     {
-                        Console.WriteLine("Read InstanceNsu and BrowseName");
-                        this.ReadInstanceNsuAndBrowseName();
-                        Console.WriteLine("Publish BadList");
-                        this.publishBadList();
-                        Console.WriteLine("Publish Bad List finish.");
-                        Console.WriteLine("Publish Client Online");
-                        this.publishClientOnline();
-                        Console.WriteLine("Publish Client Online finish.");
-                        Console.WriteLine("Publish Online Machines");
-                        this.publishOnlineMachines();
-                        Console.WriteLine("Publish Online Machines finish.");
-                        Console.WriteLine("Publish Identification");
-                        this.publishIdentification();
-                        Console.WriteLine("Publish Identification finish.");
-                        Console.WriteLine("Publish Maschine");
-                        this.publishNode();
-                        Console.WriteLine("Publish Maschine finished.");
-                        firstReadFinished = true;
+                        if (!ReadInProgress)
+                        {
+                            ReadInProgress = true;
+                            Console.WriteLine("Read InstanceNsu and BrowseName");
+                            this.ReadInstanceNsuAndBrowseName();
+                            Console.WriteLine("Publish BadList");
+                            this.publishBadList();
+                            Console.WriteLine("Publish Bad List finish.");
+                            Console.WriteLine("Publish Client Online");
+                            this.publishClientOnline();
+                            Console.WriteLine("Publish Client Online finish.");
+                            Console.WriteLine("Publish Online Machines");
+                            this.publishOnlineMachines();
+                            Console.WriteLine("Publish Online Machines finish.");
+                            Console.WriteLine("Publish Identification");
+                            this.publishIdentification();
+                            Console.WriteLine("Publish Identification finish.");
+                            Console.WriteLine("Publish Maschine");
+                            this.publishNode();
+                            Console.WriteLine("Publish Maschine finished.");
+                            firstReadFinished = true;
+                            ReadInProgress = false;
+                        }
                     }
                     else
                     {

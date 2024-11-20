@@ -377,6 +377,28 @@ namespace UmatiGateway.OPC
             }
             return nodeList;
         }
+        public NodeId? BrowseLocalNodeIdWithBrowseName(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes, QualifiedName browseName)
+        {
+            BrowseResultCollection browseResults = BrowseNode(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
+            foreach (BrowseResult browseResult in browseResults)
+            {
+                ReferenceDescriptionCollection references = browseResult.References;
+                foreach (ReferenceDescription reference in references)
+                {
+                    
+                        NodeId innerNodeId = new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex);
+                        Node? node = this.ReadNode(innerNodeId);
+                        if(node != null)
+                        {
+                            if (node.BrowseName == browseName)
+                            {
+                                return innerNodeId; 
+                            }
+                        }
+                }
+            }
+            return null;
+        }
 
         public NamespaceTable GetNamespaceTable()
         {
