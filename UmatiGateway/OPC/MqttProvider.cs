@@ -643,7 +643,7 @@ namespace UmatiGateway.OPC{
                             }
                             else
                             {
-                                childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                valueObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
                                 placeHolderObject.Add(browseName, valueObject);
                             }
                         }
@@ -1526,7 +1526,8 @@ namespace UmatiGateway.OPC{
             // Erstelle ein neues JObject mit sortierten Keys
             JObject sortedJsonObj = new JObject(
                 jsonObj.Properties()
-                       .OrderBy(p => p.Name)
+                       .OrderBy(p => !p.Name.StartsWith("$")) // Prioritize keys starting with '$'
+                       .ThenBy(p => p.Name) // Alphabetical sorting
                        .Select(p => new JProperty(p.Name, SortToken(p.Value)))
             );
             return sortedJsonObj;
