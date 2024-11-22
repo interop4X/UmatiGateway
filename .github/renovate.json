@@ -9,4 +9,5 @@
       "groupName": "OPC-F.NetStandard",
       "matchPackageNames": ["/OPCFoundation.NetStandard/"]
     }
+  ]
 }
