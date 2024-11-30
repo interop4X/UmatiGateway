@@ -29,13 +29,14 @@ using System.Xml;
 using Org.BouncyCastle.Utilities;
 using System.Reflection.Metadata;
 using Org.BouncyCastle.Tls.Crypto;
+using System.Collections.Concurrent;
 
 
 namespace UmatiGateway.OPC{
     /// <summary>
     /// This class reads the data from the OPC UA Server and provides it via Mqtt.
     /// </summary>
-    public class MqttProvider {
+    public class MqttProvider : OpcUaEventListener{
         private MqttFactory mqttFactory = new MqttFactory();
         private IMqttClient? mqttClient = null;
         private const string CLIENT_ID = "TestClient";
@@ -53,7 +54,6 @@ namespace UmatiGateway.OPC{
         public bool useGMSResultEncoding = false;
         public List<PublishedNode> publishedNodes = new List<PublishedNode>();
         public List<NodeId> onlineMachines = new List<NodeId>();
-
         private UmatiGatewayApp client;
         private Dictionary<NodeId, string> MqttValues = new Dictionary<NodeId, string>();
         private Boolean connected = false;
@@ -69,12 +69,16 @@ namespace UmatiGateway.OPC{
         public bool TimerSetup = false;
         public Dictionary <NodeId, IList<string>> errors = new Dictionary<NodeId, IList<string>>();
         private Dictionary<NodeId, MqttSubscription> subscriptions = new Dictionary<NodeId, MqttSubscription>();
+        private Dictionary<NodeId, PublishedBrowsePaths> knownBrowsePaths = new Dictionary<NodeId, PublishedBrowsePaths>();
         public volatile JObject machine = new JObject();
         private string InstanceNSU = "";
         private string TypeBrowseName = "";
         private JArray IdentificationArray = new JArray();
         private JSONConverter jsonConverter = new JSONConverter();
         private bool shortenVariables = true;
+        //private static readonly BlockingCollection<string> UpdateQueue = new BlockingCollection<string>();
+        //private BlockingCollection<PublishedBrowsePaths> browsePathsToRefresh = new BlockingCollection<PublishedBrowsePaths>();
+        private BlockingCollection<NodeId> changedNodes = new BlockingCollection<NodeId>();
 
         public MqttProvider(UmatiGatewayApp client){
             this.client = client;
@@ -115,6 +119,7 @@ namespace UmatiGateway.OPC{
                 }
             }
             this.doPublish();
+            this.client.ConnectEvents(this);
             aTimer.Start();
             
         }
@@ -468,6 +473,234 @@ namespace UmatiGateway.OPC{
         private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
         {
             // Check if for the Parent a PlaceholderRule applies
+
+            List<NodeId> optionalMandatoryPlaceholders = this.GetOptionalAndMandatoryPlaceHolders(nodeId, parent);
+            //Find possible Types for Placeholder/Children
+            List<PlaceholderNode> placeholderNodes = new List<PlaceholderNode>();
+            foreach (NodeId placeholder in optionalMandatoryPlaceholders)
+            {
+                Node? placeholderNode = this.client.ReadNode(placeholder);
+                if (placeholderNode != null)
+                {
+                    NodeId? placeHolderTypeDefinition = this.client.BrowseTypeDefinition(placeholder);
+                    string phBrowseName = placeholderNode.BrowseName.Name;
+                    if (!jObject.ContainsKey(phBrowseName))
+                    {
+                        JObject placeholderType = new JObject();
+                        jObject.Add(phBrowseName, placeholderType);
+                        List<NodeId> subTypes = new List<NodeId>();
+                        this.client.BrowseAllHierarchicalSubType(placeHolderTypeDefinition, subTypes);
+                        placeholderNodes.Add(new PlaceholderNode(placeholder, placeHolderTypeDefinition, placeholderType, subTypes));
+                    }
+                }
+
+            }
+
+            List<NodeId> hierarchicalChilds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
+            foreach (NodeId child in hierarchicalChilds)
+            {
+                JObject? placeHolderObject = null;
+                NodeId typeDefinition = this.client.BrowseTypeDefinition(child);
+                foreach (PlaceholderNode placeHolderNode in placeholderNodes)
+                {
+                    if (typeDefinition == placeHolderNode.typeDefinitionNodeId || placeHolderNode.subTypeNodeIds.Contains(typeDefinition))
+                    {
+                        placeHolderObject = placeHolderNode.phList;
+                    }
+                }
+                Node? childNode = this.client.ReadNode(child);
+                if (childNode != null)
+                {
+                    NodeClass childNodeClass = childNode.NodeClass;
+                    String browseName = childNode.BrowseName.Name;
+                    JObject childObject = new JObject();
+                    if (jObject.ContainsKey(browseName))
+                    {
+                        Console.Out.WriteLine($"Warning double browseName {browseName}");
+                        continue;
+                    }
+
+                    
+                    switch(childNodeClass)
+                    {
+                        case NodeClass.Object:
+                            if (placeHolderObject == null)
+                            {
+                                jObject.Add(browseName, childObject);
+                                this.addKnownBrowsePath(child, childObject, nodeId);
+                            }
+                            else
+                            {
+                                childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                placeHolderObject.Add(browseName, childObject);
+                                this.addKnownBrowsePath(child, childObject, nodeId);
+                            }
+                            break;
+                        case NodeClass.Variable:
+                            JToken dataValue = getDataValueAsObject(child);
+                            if (!subscriptions.ContainsKey(child))
+                            {
+                                uint subscription = this.client.SubscribeToDataChanges(child, this.updateDataValue);
+                                this.subscriptions.Add(child, new MqttSubscription(child, jObject, browseName, subscription));
+                            }
+                            bool isProperty = false;
+                            bool shorten = false;
+
+                            if (typeDefinition == VariableTypeIds.PropertyType)
+                            {
+                                isProperty = true;
+                            }
+                            else
+                            {
+                                if (shortenVariables)
+                                {
+                                    List<NodeId> nodeIds = this.client.BrowseLocalNodeIds(child, BrowseDirection.Forward, (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
+                                    if (nodeIds.Count == 0)
+                                    {
+                                        shorten = true;
+                                    }
+                                }
+                            }
+                            if (isProperty || shorten)
+                            {
+                                if (dataValue is JValue)
+                                {
+                                    if (placeHolderObject == null)
+                                    {
+                                        jObject.Add(browseName, (JValue)dataValue);
+                                        this.addKnownBrowsePath(child, (JValue) dataValue, nodeId);
+                                    }
+                                    else
+                                    {
+                                        childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                        placeHolderObject.Add(browseName, childObject);
+                                        this.addKnownBrowsePath(child, childObject, nodeId);
+
+                                    }
+                                }
+                                else if (dataValue is JObject)
+                                {
+                                    if (placeHolderObject == null)
+                                    {
+                                        jObject.Add(browseName, (JObject)dataValue);
+                                        this.addKnownBrowsePath(child, (JObject)dataValue, nodeId);
+
+                                    }
+                                    else
+                                    {
+                                        JObject dv = (JObject)dataValue;
+                                        dv.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                        placeHolderObject.Add(browseName, dv);
+                                        this.addKnownBrowsePath(child, dv, nodeId);
+
+                                    }
+                                }
+                                else if (dataValue is JArray)
+                                {
+                                    if (placeHolderObject == null)
+                                    {
+                                        jObject.Add(browseName, (JArray)dataValue);
+                                        this.addKnownBrowsePath(child, (JArray)dataValue, nodeId);
+                                    }
+                                    else
+                                    {
+                                        JArray array = (JArray)dataValue;
+                                        placeHolderObject.Add(browseName, array);
+                                        this.addKnownBrowsePath(child, array, nodeId);
+
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                JObject valueObject = new JObject();
+                                if (placeHolderObject == null)
+                                {
+                                    jObject.Add(browseName, valueObject);
+                                }
+                                else
+                                {
+                                    valueObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    placeHolderObject.Add(browseName, valueObject);
+                                }
+                                if (dataValue is JValue)
+                                {
+                                    valueObject.Add("value", (JValue)dataValue);
+                                    this.addKnownBrowsePath(child, (JValue)dataValue, nodeId);
+                                }
+                                else if (dataValue is JObject)
+                                {
+                                    valueObject.Add("value", (JObject)dataValue);
+                                    this.addKnownBrowsePath(child, (JObject)dataValue, nodeId);
+                                }
+                                else if (dataValue is JArray)
+                                {
+                                    valueObject.Add("value", (JArray)dataValue);
+                                    this.addKnownBrowsePath(child, (JArray)dataValue, nodeId);
+                                }
+                                valueObject.Add("properties", childObject);
+
+                            }
+                            break;
+                        default: Console.WriteLine($"Unexpected NodeClass Detected! {childNodeClass}"); break;
+                    }
+                    createJSON(childObject, child, nodeId);
+                    
+                    //Console.WriteLine(childObject.Path);
+                }
+            }
+        }
+        private List<NodeId> GetOptionalAndMandatoryPlaceHolders(NodeId nodeId, NodeId? parent)
+        {
+            List<NodeId> optionalMandatoryPlaceholdersOverParent = new List<NodeId>();
+            if (parent != null)
+            {
+                Node? node = this.client.ReadNode(nodeId);
+                if (node != null)
+                {
+                    QualifiedName browseName = node.BrowseName;
+                    NodeId parentTypeDefinition = this.client.BrowseTypeDefinition(parent);
+                    NodeId? typeNodeIdofNodeID = this.client.BrowseLocalNodeIdWithBrowseName(parentTypeDefinition, BrowseDirection.Forward, (int)NodeClass.Object | (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true, browseName);
+                    if (typeNodeIdofNodeID != null)
+                    {
+                        optionalMandatoryPlaceholdersOverParent = this.client.GetOptionalAndMandatoryPlaceholders(typeNodeIdofNodeID);
+                    }
+                }
+
+            }
+            // Check for OptionalPlaceholder and MandatoryPlaceholder in the parents TypeDefinition
+            NodeId ptypeDefinition = this.client.BrowseTypeDefinition(nodeId);
+            List<NodeId> optionalMandatoryPlaceholders = this.client.GetOptionalAndMandatoryPlaceholders(ptypeDefinition);
+            optionalMandatoryPlaceholders.AddRange(optionalMandatoryPlaceholdersOverParent);
+            return optionalMandatoryPlaceholders;
+        }
+
+        private void addKnownBrowsePath(NodeId childNodeId, JToken childObject, NodeId? ParentId)
+        {
+            if(!this.knownBrowsePaths.ContainsKey(childNodeId))
+            {
+                PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(childNodeId, ParentId);
+                publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                this.knownBrowsePaths.Add(childNodeId, publishedBrowsePaths);
+            }
+            else
+            {
+                PublishedBrowsePaths? publishedBrowsePaths;
+                if (this.knownBrowsePaths.TryGetValue(childNodeId, out publishedBrowsePaths))
+                {
+                    if (publishedBrowsePaths != null)
+                    {
+                        if (!publishedBrowsePaths.browsePaths.ContainsKey(childObject.Path))
+                        {
+                            publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                        }
+                    }
+                }
+            }
+        }
+        /*private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null)
+        {
+            // Check if for the Parent a PlaceholderRule applies
             List<NodeId> optionalMandatoryPlaceholdersOverParent = new List<NodeId>();
             if (parent != null)
             {
@@ -539,7 +772,7 @@ namespace UmatiGateway.OPC{
                     String browseName = childNode.BrowseName.Name.ToString();
                     this.Debug($"{browseName}");
                     JObject childObject = new JObject();
-                    createJSON(childObject, child, nodeId);
+                    createJSON(jObject, child, nodeId);
                     if (childNode.NodeClass == NodeClass.Object)
                     {
                         if (jObject.ContainsKey(browseName)) {
@@ -555,6 +788,27 @@ namespace UmatiGateway.OPC{
                                 childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
                                 placeHolderObject.Add(browseName, childObject);
                             }
+                            if (!this.knownBrowsePaths.ContainsKey(child))
+                            {
+                                PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(child);
+                                publishedBrowsePaths.browsePaths.Add(jObject.Path + "." + browseName, jObject);
+                                this.knownBrowsePaths.Add(child, publishedBrowsePaths);
+                            }
+                            else
+                            {
+                                PublishedBrowsePaths? publishedBrowsePaths;
+                                if (this.knownBrowsePaths.TryGetValue(child, out publishedBrowsePaths))
+                                {
+                                    if (publishedBrowsePaths != null)
+                                    {
+                                        if (!publishedBrowsePaths.browsePaths.ContainsKey(browseName))
+                                        {
+                                            publishedBrowsePaths.browsePaths.Add(browseName, jObject);
+                                        }
+                                    }
+                                }
+
+                            }
                         }
                     }
                     if (childNode.NodeClass == NodeClass.Variable)
@@ -564,6 +818,26 @@ namespace UmatiGateway.OPC{
                         {
                             uint subscription = this.client.SubscribeToDataChanges(child, this.updateDataValue);
                             this.subscriptions.Add(child,new MqttSubscription(child, jObject, browseName, subscription));
+                        }
+                        if(!this.knownBrowsePaths.ContainsKey(child))
+                        {
+                            PublishedBrowsePaths publishedBrowsePaths= new PublishedBrowsePaths(child);
+                            publishedBrowsePaths.browsePaths.Add(jObject.Path + "." + browseName, jObject);
+                            this.knownBrowsePaths.Add(child, publishedBrowsePaths);
+                        } else
+                        {
+                            PublishedBrowsePaths? publishedBrowsePaths;
+                            if(this.knownBrowsePaths.TryGetValue(child, out publishedBrowsePaths))
+                            {
+                                if(publishedBrowsePaths != null)
+                                {
+                                    if(!publishedBrowsePaths.browsePaths.ContainsKey(browseName))
+                                    {
+                                        publishedBrowsePaths.browsePaths.Add(browseName, jObject);
+                                    }
+                                }
+                            }
+
                         }
                         bool isProperty = false;
                         bool shorten = false;
@@ -652,7 +926,7 @@ namespace UmatiGateway.OPC{
                 
             }
 
-        }
+        }*/
         public void publishIdentificationObject()
         {
             try
@@ -726,10 +1000,6 @@ namespace UmatiGateway.OPC{
                 }
                 DataValue dv = this.client.ReadValue(nodeId);
                 Object value = dv.Value;
-                if(nodeId == new NodeId(58514, 13))
-                {
-                    Console.WriteLine("Here");
-                }
                 switch (value)
                 {
                     case null: return this.jsonConverter.GetDefaultNullValue();
@@ -1353,19 +1623,24 @@ namespace UmatiGateway.OPC{
                             this.publishClientOnline();
                             Console.WriteLine("Publish Client Online finish.");
                             Console.WriteLine("Publish Online Machines");
-                            this.publishOnlineMachines();
-                            Console.WriteLine("Publish Online Machines finish.");
-                            Console.WriteLine("Publish Identification");
-                            this.publishIdentification();
-                            Console.WriteLine("Publish Identification finish.");
+                            /* this.publishOnlineMachines();
+                             Console.WriteLine("Publish Online Machines finish.");
+                             Console.WriteLine("Publish Identification");
+                             this.publishIdentification();
+                             Console.WriteLine("Publish Identification finish.");*/
                             Console.WriteLine("Publish Maschine");
                             this.publishNode();
                             Console.WriteLine("Publish Maschine finished.");
+                            this.publishNodeAfterSubscription();
                             firstReadFinished = true;
                             ReadInProgress = false;
+                            foreach (KeyValuePair<NodeId, PublishedBrowsePaths> entry in this.knownBrowsePaths)
+                            {
+                                Console.Write(entry.Value.ToString());
+                            }
                         }
-                    }
-                    else
+                    } 
+                    /*else
                     {
                         //Detect OPC disconnect
                         _ = this.client.ReadNode(ObjectIds.Server);
@@ -1384,7 +1659,12 @@ namespace UmatiGateway.OPC{
                         Console.WriteLine("Publish Maschine Object");
                         this.publishNodeAfterSubscription();
                         Console.WriteLine("Publish Maschine Object finished.");
-                    }
+
+                        foreach(KeyValuePair<NodeId, PublishedBrowsePaths> entry in this.knownBrowsePaths)
+                        {
+                            Console.Write(entry.Value.ToString());
+                        }
+                    }*/
 
                 }
                 //Opc.Ua.ServiceResultException: BadNotConnected
@@ -1553,6 +1833,41 @@ namespace UmatiGateway.OPC{
                 return token;
             }
         }
+        private void processUpdates()
+        {
+            // Loop indefinitely, checking for updates
+            foreach (NodeId affectedNode in this.changedNodes.GetConsumingEnumerable())
+            {
+                this.updateNode(affectedNode);
+                
+            }
+        }
+        public void updateNode(NodeId affectedNode)
+        {
+            if (this.knownBrowsePaths.TryGetValue(affectedNode, out PublishedBrowsePaths? path))
+            {
+                if (path != null)
+                {
+                    foreach(KeyValuePair<string, JToken> entry in path.browsePaths)
+                    {
+                        JToken? affectedObject = this.machine.SelectToken(entry.Key);
+                        if (affectedObject != null)
+                        {
+                            JObject jObject = new JObject();
+                  
+                            this.createJSON(jObject, path.NodeId, path.ParentId);
+                            affectedObject.Replace(jObject);
+                        }
+                    }
+                }
+                this.publishNodeAfterSubscription();
+            }
+        }
+        void OpcUaEventListener.ModelChangeEvent(NodeId affectedNode)
+        {
+            Console.WriteLine($"Update Affected Node {affectedNode}");
+            this.updateNode(affectedNode);
+        }
     }
     public class MqttSubscription
     {
@@ -1568,4 +1883,25 @@ namespace UmatiGateway.OPC{
             this.Subscriptionhandle = SubscriptionHandle;
         }
     }
+    public class PublishedBrowsePaths
+    {
+        public NodeId NodeId { get; set; }
+        public NodeId? ParentId { get; set; }
+        public Dictionary<String, JToken> browsePaths = new Dictionary<String, JToken>();
+        public PublishedBrowsePaths(NodeId nodeId, NodeId? ParentId)
+        {
+            this.NodeId = nodeId;
+            this.ParentId = ParentId;
+        }
+        public override string ToString()
+        {
+            string returnString = $"NodeId: {this.NodeId}";
+            foreach(KeyValuePair<String, JToken> entry in browsePaths)
+            {
+                returnString += " Path: " + entry.Key + "\n";
+            }
+            return returnString;
+        }
+    }
+
 }

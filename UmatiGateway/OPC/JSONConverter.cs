@@ -13,7 +13,7 @@ namespace UmatiGateway.OPC
     /// </summary>
     public class JSONConverter
     {
-        private readonly JToken defaultNullValue = JValue.CreateNull();
+        //private readonly JToken defaultNullValue = JValue.CreateNull();
         public JSONConverter() {
         }
 
@@ -200,7 +200,7 @@ namespace UmatiGateway.OPC
         /// <returns>The JToken that is to be used if the DataValue is null.</returns>
         public JToken GetDefaultNullValue()
         {
-            return this.defaultNullValue;
+            return JValue.CreateNull();
         }
     }
 }

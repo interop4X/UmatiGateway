@@ -90,6 +90,7 @@ namespace UmatiGateway.OPC
         public Configuration configuration = new Configuration();
         public Configuration loadedConfiguration = new Configuration();
         public Subscription? subscription = null;
+        public List<OpcUaEventListener> opcUaEventListeners = new List<OpcUaEventListener>();
 
         public MqttProvider MqttProvider;
 
@@ -362,7 +363,69 @@ namespace UmatiGateway.OPC
             }
             return node;
         }
+        public void ConnectEvents(OpcUaEventListener opcUaEventListener)
+        {
+            this.opcUaEventListeners.Add(opcUaEventListener);
+            Subscription subscription = new Subscription(this.Session.DefaultSubscription);
+            subscription.DisplayName = "ModelChangeEventSubscription";
+            subscription.PublishingInterval = 1000;
+            MonitoredItem eventMonitoredItem = new MonitoredItem(subscription.DefaultItem);
+            eventMonitoredItem.StartNodeId = ObjectIds.Server;
+            eventMonitoredItem.AttributeId = Attributes.EventNotifier;
+            eventMonitoredItem.MonitoringMode = MonitoringMode.Reporting;
 
+            EventFilter filter = new EventFilter();
+            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.Changes);
+            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.EventType);
+            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.SourceNode);
+
+            eventMonitoredItem.Filter = filter;
+
+            eventMonitoredItem.Notification += HandleEventNotification;
+            subscription.AddItem(eventMonitoredItem);
+            this.Session.AddSubscription(subscription);
+            subscription.Create();
+
+        }
+        public void HandleEventNotification(MonitoredItem item, MonitoredItemNotificationEventArgs notification)
+        {
+            try
+            {
+                if (notification.NotificationValue is EventFieldList)
+                {
+                    EventFieldList efl = (EventFieldList)notification.NotificationValue;
+                    VariantCollection vc = efl.EventFields;
+                    foreach (Variant var in vc)
+                    {
+                        if (var.TypeInfo.ToString() == "ExtensionObject[]")
+                        {
+                            ExtensionObject[] etos = (ExtensionObject[])var.Value;
+                            foreach (ExtensionObject eto in etos)
+                            {
+                                Object body = eto.Body;
+                                if (body is ModelChangeStructureDataType)
+                                {
+                                    ModelChangeStructureDataType mcs = (ModelChangeStructureDataType)body;
+                                    if(mcs.Affected != null)
+                                    {
+                                        Console.WriteLine($"Affected: {mcs.Affected}");
+                                        Console.WriteLine($"AffectedType: {mcs.AffectedType}");
+                                        Console.WriteLine($"Verb: {mcs.Verb}");
+                                        foreach(OpcUaEventListener listener in this.opcUaEventListeners)
+                                        {
+                                            listener.ModelChangeEvent(mcs.Affected);
+                                        }
+                                    }                                    
+                                }
+                            }
+                        }
+                    }
+                }
+            }catch (Exception ex)
+            {
+                Console.WriteLine($"OnMonitoredItemNotification error: {ex.Message}");
+            }
+        }
         public List<NodeId> BrowseLocalNodeIds(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
         {
             List<NodeId> nodeList = new List<NodeId>();
