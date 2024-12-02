@@ -428,7 +428,7 @@ namespace UmatiGateway.OPC{
                                 }
                             }
                         }
-                        if (isProperty || shorten)
+                        if (true)
                         {
                             if (dataValue is JValue)
                             {
@@ -535,7 +535,7 @@ namespace UmatiGateway.OPC{
                             }
                             else
                             {
-                                childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                childObject.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                 placeHolderObject.Add(browseName, childObject);
                                 if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId);
                             }
@@ -576,7 +576,7 @@ namespace UmatiGateway.OPC{
                                     }
                                     else
                                     {
-                                        childObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                        childObject.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                         placeHolderObject.Add(browseName, childObject);
                                         if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId);
 
@@ -593,7 +593,7 @@ namespace UmatiGateway.OPC{
                                     else
                                     {
                                         JObject dv = (JObject)dataValue;
-                                        dv.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                        dv.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                         placeHolderObject.Add(browseName, dv);
                                         if (subscribe) this.addKnownBrowsePath(child, dv, nodeId);
 
@@ -624,7 +624,7 @@ namespace UmatiGateway.OPC{
                                 }
                                 else
                                 {
-                                    valueObject.Add("$Typedefinition", this.getInstanceNsu(typeDefinition, false));
+                                    valueObject.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                     placeHolderObject.Add(browseName, valueObject);
                                 }
                                 if (dataValue is JValue)
