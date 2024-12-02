@@ -8,6 +8,9 @@ using System.Text;
 using System.Threading.Tasks;
 using MQTTnet.Exceptions;
 using Newtonsoft.Json.Linq;
+using NLog;
+using NLog.Config;
+using NLog.Targets;
 using Opc.Ua;
 using Opc.Ua.Client;
 using Opc.Ua.Client.ComplexTypes;
@@ -18,6 +21,8 @@ namespace UmatiGateway.OPC
 {
     public class UmatiGatewayApp
     {
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+
         public List<UmatiGatewayAppListener> umatiGatewayAppListeners = new List<UmatiGatewayAppListener>();
         public BlockingTransition blockingTransition = new BlockingTransition("", "", "", false);
         #region Constructors
@@ -28,6 +33,7 @@ namespace UmatiGateway.OPC
         }
         public UmatiGatewayApp(ApplicationConfiguration configuration, TextWriter writer, Action<IList, IList> validateResponse)
         {
+            this.ConfigureLogging();
             m_validateResponse = validateResponse;
             m_output = writer;
             m_configuration = configuration;
@@ -35,6 +41,16 @@ namespace UmatiGateway.OPC
             this.TypeDictionaries = new TypeDictionaries(this);
             this.MqttProvider = new MqttProvider(this);
 
+        }
+        private void ConfigureLogging()
+        {
+            LoggingConfiguration config = new LoggingConfiguration();
+            ConsoleTarget logconsole = new ConsoleTarget("logconsole")
+            {
+                Layout = "${longdate} ${uppercase:${level}} ${message}"
+            };
+            config.AddRule(NLog.LogLevel.Info, NLog.LogLevel.Fatal, logconsole);
+            LogManager.Configuration = config;
         }
 
         public void StartUp()
@@ -73,9 +89,8 @@ namespace UmatiGateway.OPC
         /// <summary>
         /// Gets the client session.
         /// </summary>
-        public Session Session => m_session;
+        public Session? Session => m_session;
         public TypeDictionaries TypeDictionaries;
-        public ComplexTypeSystem ComplexTypeSystem;
         public String opcServerUrl = "";
         public bool readExtraLibs = false;
         /// <summary>
@@ -198,82 +213,81 @@ namespace UmatiGateway.OPC
                 this.blockingTransitionChange(this.blockingTransition);
                 try
                 {
-                    if (/*m_session != null && m_session.Connected == true*/ false)
+                    m_output.WriteLine("Connecting to... {0}", serverUrl);
+
+                    // Get the endpoint by connecting to server's discovery endpoint.
+                    // Try to find the first endopint with security.
+                    EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
+                    EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
+                    ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
+                    UserIdentity userIdentity = new UserIdentity();
+                    if (!String.IsNullOrWhiteSpace(this.opcUser))
                     {
-                        m_output.WriteLine("Session already connected!");
+                        userIdentity = new UserIdentity(this.opcUser, this.opcPwd);
                     }
-                    else
+
+                    // Create the session
+                    Session session = await Session.Create(
+                        m_configuration,
+                        endpoint,
+                        false,
+                        false,
+                        m_configuration.ApplicationName,
+                        30 * 60 * 1000,
+                        userIdentity,
+                        //null,
+                        null
+                    );
+
+                    // Assign the created session
+                    if (session != null && session.Connected)
                     {
-                        m_output.WriteLine("Connecting to... {0}", serverUrl);
+                        
+                        m_session = session;
 
-                        // Get the endpoint by connecting to server's discovery endpoint.
-                        // Try to find the first endopint with security.
-                        EndpointDescription endpointDescription = CoreClientUtils.SelectEndpoint(m_configuration, serverUrl, false);
-                        EndpointConfiguration endpointConfiguration = EndpointConfiguration.Create(m_configuration);
-                        ConfiguredEndpoint endpoint = new ConfiguredEndpoint(null, endpointDescription, endpointConfiguration);
-                        UserIdentity userIdentity = new UserIdentity();
-                        if (!String.IsNullOrWhiteSpace(this.opcUser))
-                        {
-                            userIdentity = new UserIdentity(this.opcUser, this.opcPwd);
-                        }
-
-                        // Create the session
-                        Session session = await Session.Create(
-                            m_configuration,
-                            endpoint,
-                            false,
-                            false,
-                            m_configuration.ApplicationName,
-                            30 * 60 * 1000,
-                            userIdentity,
-                            //null,
-                            null
-                        );
-
-                        // Assign the created session
-                        if (session != null && session.Connected)
-                        {
-                            m_session = session;
-                        }
 
                         // Session created successfully.
                         m_output.WriteLine("New Session Created with SessionName = {0}", m_session.SessionName);
+
+                        this.TypeDictionaries = new TypeDictionaries(this);
+                        this.TypeDictionaries.ReadExtraLibs = this.readExtraLibs;
+                        this.blockingTransition.Message = "Read Type Dictionaries";
+                        this.blockingTransition.Detail = "Read Binaries";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        //this.TypeDictionaries.ReadTypeDictionary(false);
+                        Console.WriteLine("Read Binaries");
+                        this.TypeDictionaries.ReadOpcBinary();
+                        this.blockingTransition.Detail = "Read DataTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read DataTypes");
+                        this.TypeDictionaries.ReadDataTypes();
+                        this.blockingTransition.Detail = "Read EventTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read EventTypes");
+                        this.TypeDictionaries.ReadEventTypes();
+                        this.blockingTransition.Detail = "Read InterfaceTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read InterfaceTypes");
+                        this.TypeDictionaries.ReadInterfaceTypes();
+                        this.blockingTransition.Detail = "Read ObjectTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read ObjectTypes");
+                        this.TypeDictionaries.ReadObjectTypes();
+                        this.blockingTransition.Detail = "Read ReferenceTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read ReferenceTypes");
+                        this.TypeDictionaries.ReadReferenceTypes();
+                        this.blockingTransition.Detail = "Read VariableTypes";
+                        this.blockingTransitionChange(this.blockingTransition);
+                        Console.WriteLine("Read VariableTypes");
+                        this.TypeDictionaries.ReadVariableTypes();
+                        return true;
                     }
-                    this.TypeDictionaries = new TypeDictionaries(this);
-                    this.TypeDictionaries.ReadExtraLibs = this.readExtraLibs;
-                    this.blockingTransition.Message = "Read Type Dictionaries";
-                    this.blockingTransition.Detail = "Read Binaries";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    //this.TypeDictionaries.ReadTypeDictionary(false);
-                    Console.WriteLine("Read Binaries");
-                    this.TypeDictionaries.ReadOpcBinary();
-                    this.blockingTransition.Detail = "Read DataTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read DataTypes");
-                    this.TypeDictionaries.ReadDataTypes();
-                    this.blockingTransition.Detail = "Read EventTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read EventTypes");
-                    this.TypeDictionaries.ReadEventTypes();
-                    this.blockingTransition.Detail = "Read InterfaceTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read InterfaceTypes");
-                    this.TypeDictionaries.ReadInterfaceTypes();
-                    this.blockingTransition.Detail = "Read ObjectTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read ObjectTypes");
-                    this.TypeDictionaries.ReadObjectTypes();
-                    this.blockingTransition.Detail = "Read ReferenceTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read ReferenceTypes");
-                    this.TypeDictionaries.ReadReferenceTypes();
-                    this.blockingTransition.Detail = "Read VariableTypes";
-                    this.blockingTransitionChange(this.blockingTransition);
-                    Console.WriteLine("Read VariableTypes");
-                    this.TypeDictionaries.ReadVariableTypes();
-                    //this.ComplexTypeSystem = new ComplexTypeSystem(this.Session);
-                    //this.ComplexTypeSystem.Load().Wait();
-                    return true;
+                    else
+                    {
+                        Logger.Info("Unable to Create OPC Session.");
+                        return false;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -365,26 +379,29 @@ namespace UmatiGateway.OPC
         }
         public void ConnectEvents(OpcUaEventListener opcUaEventListener)
         {
-            this.opcUaEventListeners.Add(opcUaEventListener);
-            Subscription subscription = new Subscription(this.Session.DefaultSubscription);
-            subscription.DisplayName = "ModelChangeEventSubscription";
-            subscription.PublishingInterval = 1000;
-            MonitoredItem eventMonitoredItem = new MonitoredItem(subscription.DefaultItem);
-            eventMonitoredItem.StartNodeId = ObjectIds.Server;
-            eventMonitoredItem.AttributeId = Attributes.EventNotifier;
-            eventMonitoredItem.MonitoringMode = MonitoringMode.Reporting;
+            if (this.Session != null)
+            {
+                this.opcUaEventListeners.Add(opcUaEventListener);
+                Subscription subscription = new Subscription(this.Session.DefaultSubscription);
+                subscription.DisplayName = "ModelChangeEventSubscription";
+                subscription.PublishingInterval = 1000;
+                MonitoredItem eventMonitoredItem = new MonitoredItem(subscription.DefaultItem);
+                eventMonitoredItem.StartNodeId = ObjectIds.Server;
+                eventMonitoredItem.AttributeId = Attributes.EventNotifier;
+                eventMonitoredItem.MonitoringMode = MonitoringMode.Reporting;
 
-            EventFilter filter = new EventFilter();
-            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.Changes);
-            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.EventType);
-            filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.SourceNode);
+                EventFilter filter = new EventFilter();
+                filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.Changes);
+                filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.EventType);
+                filter.AddSelectClause(ObjectTypeIds.BaseEventType, BrowseNames.SourceNode);
 
-            eventMonitoredItem.Filter = filter;
+                eventMonitoredItem.Filter = filter;
 
-            eventMonitoredItem.Notification += HandleEventNotification;
-            subscription.AddItem(eventMonitoredItem);
-            this.Session.AddSubscription(subscription);
-            subscription.Create();
+                eventMonitoredItem.Notification += HandleEventNotification;
+                subscription.AddItem(eventMonitoredItem);
+                this.Session.AddSubscription(subscription);
+                subscription.Create();
+            }
 
         }
         public void HandleEventNotification(MonitoredItem item, MonitoredItemNotificationEventArgs notification)
@@ -465,9 +482,16 @@ namespace UmatiGateway.OPC
 
         public NamespaceTable GetNamespaceTable()
         {
-            DataValue dv = m_session.ReadValue(VariableIds.Server_NamespaceArray);
-            String[] namespaces = (String[])dv.Value;
-            return new NamespaceTable(namespaces);
+            if (m_session != null)
+            {
+                DataValue dv = m_session.ReadValue(VariableIds.Server_NamespaceArray);
+                String[] namespaces = (String[])dv.Value;
+                return new NamespaceTable(namespaces);
+            } else
+            {
+                Logger.Error("Unable to Get NameSpaceTable! Sessions is not Connected");
+            }
+            return new NamespaceTable();
         }
         public List<NodeId> BrowseLocalNodeIdsWithTypeDefinition(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes, NodeId expectedTypeDefinition)
         {
@@ -475,10 +499,13 @@ namespace UmatiGateway.OPC
             List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
             foreach (NodeId nodeId in nodeIds)
             {
-                NodeId typeDefinition = BrowseTypeDefinition(nodeId);
-                if (typeDefinition == expectedTypeDefinition)
+                NodeId? typeDefinition = BrowseTypeDefinition(nodeId);
+                if (typeDefinition != null)
                 {
-                    filteredNodeIds.Add(nodeId);
+                    if (typeDefinition == expectedTypeDefinition)
+                    {
+                        filteredNodeIds.Add(nodeId);
+                    }
                 }
             }
             return filteredNodeIds;
@@ -489,9 +516,9 @@ namespace UmatiGateway.OPC
             List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
             return nodeIds;
         }
-        public NodeId BrowseTypeDefinition(NodeId nodeId)
+        public NodeId? BrowseTypeDefinition(NodeId nodeId)
         {
-            NodeId typeDefinition = null;
+            NodeId? typeDefinition = null;
             BrowseResultCollection browseResults = BrowseNode(nodeId, BrowseDirection.Forward, (uint)NodeClass.ObjectType | (uint)NodeClass.VariableType, ReferenceTypes.HasTypeDefinition, false);
             foreach (BrowseResult browseResult in browseResults)
             {
@@ -565,7 +592,7 @@ namespace UmatiGateway.OPC
             }
             return nodeIds;
         }
-        public NodeId BrowseLocalNodeId(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
+        public NodeId? BrowseLocalNodeId(NodeId rootNodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, bool includeSubTypes)
         {
 
             List<NodeId> nodeIds = BrowseLocalNodeIds(rootNodeId, browseDirection, nodeClassMask, referenceTypeIds, includeSubTypes);
@@ -577,15 +604,26 @@ namespace UmatiGateway.OPC
         }
 
         public BrowseResultCollection Browse(BrowseDescription browseDescription)
-        {
-            BrowseDescriptionCollection browseDescriptionCollection = new BrowseDescriptionCollection(new BrowseDescription[] { browseDescription });
-            m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
-            return results;
+        {   if (m_session != null)
+            {
+                BrowseDescriptionCollection browseDescriptionCollection = new BrowseDescriptionCollection(new BrowseDescription[] { browseDescription });
+                m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
+                return results;
+            } else
+            {
+                throw new SystemException("Session was not Connected!");
+            }
         }
         public BrowseResultCollection Browse(BrowseDescriptionCollection browseDescriptionCollection)
         {
-            m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
-            return results;
+            if (m_session != null)
+            {
+                m_session.Browse(null, null, 10000, browseDescriptionCollection, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
+                return results;
+            } else
+            {
+                throw new SystemException("Session was not Connected");
+            }
         }
         public List<ExpandedNodeId> BrowseNodeId(BrowseDescription browseDescription, int? filter = null)
         {
@@ -604,17 +642,23 @@ namespace UmatiGateway.OPC
 
         public BrowseResultCollection BrowseNode(NodeId nodeId, BrowseDirection browseDirection, uint nodeClassMask, NodeId referenceTypeIds, Boolean includeSubTypes)
         {
-            BrowseDescription nodeToBrowse = new BrowseDescription();
-            nodeToBrowse.NodeId = nodeId;
-            nodeToBrowse.BrowseDirection = browseDirection;
-            nodeToBrowse.NodeClassMask = nodeClassMask;
-            nodeToBrowse.ReferenceTypeId = referenceTypeIds;
-            nodeToBrowse.IncludeSubtypes = includeSubTypes;
+            if (m_session != null)
+            {
+                BrowseDescription nodeToBrowse = new BrowseDescription();
+                nodeToBrowse.NodeId = nodeId;
+                nodeToBrowse.BrowseDirection = browseDirection;
+                nodeToBrowse.NodeClassMask = nodeClassMask;
+                nodeToBrowse.ReferenceTypeId = referenceTypeIds;
+                nodeToBrowse.IncludeSubtypes = includeSubTypes;
 
-            BrowseDescriptionCollection nodesToBrowse = new BrowseDescriptionCollection();
-            nodesToBrowse.Add(nodeToBrowse);
-            m_session.Browse(null, null, 10000, nodesToBrowse, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
-            return results;
+                BrowseDescriptionCollection nodesToBrowse = new BrowseDescriptionCollection();
+                nodesToBrowse.Add(nodeToBrowse);
+                m_session.Browse(null, null, 10000, nodesToBrowse, out BrowseResultCollection results, out DiagnosticInfoCollection diagnosticInfos);
+                return results;
+            } else
+            {
+                throw new SystemException("Session not Connected");
+            }
         }
 
         public void BrowseRootNode()
@@ -642,25 +686,12 @@ namespace UmatiGateway.OPC
             JObject jObject = new JObject();
             
             Node? node = this.ReadNode(nodeId);
-            DataValue dv = this.ReadValue(nodeId);
-            if (dv.Value is ExtensionObject eto) {
-                ExpandedNodeId expandedNodeId = this.getIndexedNodeId(eto.TypeId);
-                NodeIdDictionary<DataTypeDefinition> complexType = this.ComplexTypeSystem.GetDataTypeDefinitionsForDataType(expandedNodeId);
-                if (complexType != null)
+            DataValue? dv = this.ReadValue(nodeId);
+            if (dv != null)
+            {
+                if (dv.Value is ExtensionObject eto)
                 {
-                    foreach(NodeId complexNode in complexType.Keys)
-                    {
-                        complexType.TryGetValue(complexNode, out DataTypeDefinition? complexValue);
-                        if (complexValue != null)
-                        {
-                            jObject.Add(complexNode.ToString(), complexValue.ToString());
-                        }
-                    }
-                    Console.WriteLine("Gelesener komplexer Typ: " + complexType.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("Dekodierung des komplexen Typs fehlgeschlagen.");
+
                 }
             }
             return jObject;
@@ -676,49 +707,54 @@ namespace UmatiGateway.OPC
         }
         public void BrowseSelectedTreeNode(TreeNode TreeNode)
         {
-
-            BrowseDescription nodeToBrowse = new BrowseDescription();
-            nodeToBrowse.NodeId = TreeNode.NodeData.node.NodeId;
-            nodeToBrowse.BrowseDirection = BrowseDirection.Forward;
-            nodeToBrowse.NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable | (int)NodeClass.Method | (int)NodeClass.ObjectType | (int)NodeClass.VariableType | (int)NodeClass.DataType | (int)NodeClass.ReferenceType; ;
-            nodeToBrowse.ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences;
-            nodeToBrowse.IncludeSubtypes = true;
-            nodeToBrowse.ResultMask = (int)BrowseResultMask.All ;
-
-            BrowseDescriptionCollection nodesToBrowse = new BrowseDescriptionCollection();
-            nodesToBrowse.Add(nodeToBrowse);
-            m_session.Browse(null, null, 100, nodesToBrowse, out BrowseResultCollection browseResults, out DiagnosticInfoCollection diagnosticInfos);
-            foreach (BrowseResult browseResult in browseResults)
+            if (m_session != null)
             {
-                ReferenceDescriptionCollection references = browseResult.References;
-                foreach (ReferenceDescription reference in references)
+                BrowseDescription nodeToBrowse = new BrowseDescription();
+                nodeToBrowse.NodeId = TreeNode.NodeData.node.NodeId;
+                nodeToBrowse.BrowseDirection = BrowseDirection.Forward;
+                nodeToBrowse.NodeClassMask = (int)NodeClass.Object | (int)NodeClass.Variable | (int)NodeClass.Method | (int)NodeClass.ObjectType | (int)NodeClass.VariableType | (int)NodeClass.DataType | (int)NodeClass.ReferenceType; ;
+                nodeToBrowse.ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences;
+                nodeToBrowse.IncludeSubtypes = true;
+                nodeToBrowse.ResultMask = (int)BrowseResultMask.All;
+
+                BrowseDescriptionCollection nodesToBrowse = new BrowseDescriptionCollection();
+                nodesToBrowse.Add(nodeToBrowse);
+                m_session.Browse(null, null, 100, nodesToBrowse, out BrowseResultCollection browseResults, out DiagnosticInfoCollection diagnosticInfos);
+                foreach (BrowseResult browseResult in browseResults)
                 {
-                    NodeId nodeId = new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex);
-                    Node? node = this.ReadNode(nodeId);
-                    if (node != null)
+                    ReferenceDescriptionCollection references = browseResult.References;
+                    foreach (ReferenceDescription reference in references)
                     {
-                        NodeData nodeData = new NodeData(node);
-                        TreeNode treeNode = new TreeNode(nodeData);
-                        TreeNode.children.AddLast(treeNode);
-                        this.BrowseTree.uids.Add(treeNode.uid, treeNode);
-                        if (node.NodeClass == NodeClass.Variable)
+                        NodeId nodeId = new NodeId(reference.NodeId.Identifier, reference.NodeId.NamespaceIndex);
+                        Node? node = this.ReadNode(nodeId);
+                        if (node != null)
                         {
-                            nodeData.DataValue = this.decodeComplexType(node.NodeId);
+                            NodeData nodeData = new NodeData(node);
+                            TreeNode treeNode = new TreeNode(nodeData);
+                            TreeNode.children.AddLast(treeNode);
+                            this.BrowseTree.uids.Add(treeNode.uid, treeNode);
+                            if (node.NodeClass == NodeClass.Variable)
+                            {
+                                nodeData.DataValue = this.decodeComplexType(node.NodeId);
+                            }
                         }
                     }
                 }
+            } else
+            {
+                throw new SystemException("Session not Connected");
             }
         }
-        public DataValue ReadValue(NodeId nodeId)
+        public DataValue? ReadValue(NodeId nodeId)
         {
-            if (!checkSession())
-            {
-                return null;
-            }
-            else
+            if (m_session != null)
             {
                 return m_session.ReadValue(nodeId);
+            } else
+            {
+                throw new SystemException("Session Not Connected");
             }
+            
         }
 
         /// <summary>
@@ -793,7 +829,7 @@ namespace UmatiGateway.OPC
 
         #region Private Fields
         private ApplicationConfiguration m_configuration;
-        private Session m_session;
+        private Session? m_session;
         private readonly TextWriter m_output;
         private readonly Action<IList, IList> m_validateResponse;
         #endregion

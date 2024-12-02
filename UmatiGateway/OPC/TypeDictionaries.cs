@@ -10,7 +10,7 @@ namespace UmatiGateway.OPC
     {
         public Dictionary<GeneratedDataTypeDefinition, GeneratedDataClass> generatedDataTypes = new Dictionary<GeneratedDataTypeDefinition, GeneratedDataClass>(new DataClassComparer());
         private UmatiGatewayApp client;
-        private static NLog.Logger logger = NLog.LogManager.GetCurrentClassLogger();
+        private static NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
         private List<string> errorMemmory = new List<string>();
         private Dictionary<NodeId, Node> opcBinary = new Dictionary<NodeId, Node>(new NodeIdComparer());
         private Dictionary<NodeId, Node> dataTypes = new Dictionary<NodeId, Node>();
@@ -57,9 +57,15 @@ namespace UmatiGateway.OPC
             binaryTypeDictionaries = this.client.BrowseLocalNodeIdsWithTypeDefinition(ObjectIds.OPCBinarySchema_TypeSystem, BrowseDirection.Forward, (uint)NodeClass.Variable, ReferenceTypeIds.HasComponent, true, VariableTypeIds.DataTypeDictionaryType);
             foreach (NodeId binaryTypeDictionary in binaryTypeDictionaries)
             {
-                DataValue dv = this.client.ReadValue(binaryTypeDictionary);
-                string xmlString = Encoding.UTF8.GetString((byte[])dv.Value);
-                this.generateDataClasses(xmlString);
+                DataValue? dv = this.client.ReadValue(binaryTypeDictionary);
+                if (dv != null)
+                {
+                    string xmlString = Encoding.UTF8.GetString((byte[])dv.Value);
+                    this.generateDataClasses(xmlString);
+                } else
+                {
+                    Logger.Error($"Unable to read binaryTypeDictionary {binaryTypeDictionary}");
+                }
             };
             if(ReadExtraLibs)
             {
@@ -271,7 +277,7 @@ namespace UmatiGateway.OPC
             }
             foreach (string error in this.errorMemmory)
             {
-                logger.Error(error);
+                Logger.Error(error);
             }
         }
         public void ReadDataTypes()

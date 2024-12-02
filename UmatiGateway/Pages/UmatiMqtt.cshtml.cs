@@ -25,6 +25,7 @@ namespace UmatiGateway.Pages
             ConnectionType = "tcp";
             MqttUser = "fva/matthias2";
             Password = "";
+            SessionId = "";
             ConnectionUrl = "localhost";
             ClientId = "fva/matthias2";
             Prefix = "umati/v2";
