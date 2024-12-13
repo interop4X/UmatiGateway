@@ -74,6 +74,10 @@ namespace UmatiGateway.OPC
             foreach (PublishedNode publishedNode in configuration.publishedNodes)
             {
                 this.MqttProvider.publishedNodes.Add(publishedNode);
+                //Publish to machine nodes
+                MachineNode machineNode = new MachineNode(publishedNode.nodeId, publishedNode.namespaceUrl);
+                machineNode.NodeIdType = publishedNode.type;
+                this.MqttProvider.publishedMachines.Add(machineNode);
             }
             if (this.configuration.autostart == true)
             {
@@ -184,11 +188,15 @@ namespace UmatiGateway.OPC
                 string? stringId = nodeId.Identifier.ToString();
                 if (stringId != null)
                 {
+                    //Publish to normal nodes
                     PublishedNode publishedNode = new PublishedNode();
                     publishedNode.type = nodeId.IdType.ToString();
                     publishedNode.nodeId = stringId;
                     publishedNode.namespaceUrl = this.GetNamespaceTable().GetString(nodeId.NamespaceIndex);
                     this.MqttProvider.publishedNodes.Add(publishedNode);
+                    //Publish to machine nodes
+                    MachineNode machineNode = new MachineNode(stringId, this.GetNamespaceTable().GetString(nodeId.NamespaceIndex));
+                    this.MqttProvider.publishedMachines.Add(machineNode);
                 }
             }
         }

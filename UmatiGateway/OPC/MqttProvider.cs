@@ -52,6 +52,7 @@ namespace UmatiGateway.OPC{
         public string mqttPrefix = "";
         public string clientId = "";
         public bool useGMSResultEncoding = false;
+        public List<MachineNode> publishedMachines = new List<MachineNode>();
         public List<PublishedNode> publishedNodes = new List<PublishedNode>();
         public List<NodeId> onlineMachines = new List<NodeId>();
         private UmatiGatewayApp client;
@@ -74,9 +75,8 @@ namespace UmatiGateway.OPC{
         private JArray IdentificationArray = new JArray();
         private JSONConverter jsonConverter = new JSONConverter();
         private bool shortenVariables = true;
-        //private static readonly BlockingCollection<string> UpdateQueue = new BlockingCollection<string>();
-        //private BlockingCollection<PublishedBrowsePaths> browsePathsToRefresh = new BlockingCollection<PublishedBrowsePaths>();
         private BlockingCollection<NodeId> changedNodes = new BlockingCollection<NodeId>();
+        private List <MachineNode> machineNodes = new List<MachineNode>();
 
         public MqttProvider(UmatiGatewayApp client){
             this.client = client;
@@ -114,6 +114,21 @@ namespace UmatiGateway.OPC{
                 } else if(publishedNode.type == "String")
                 {
                     this.onlineMachines.Add(new NodeId(publishedNode.nodeId, (ushort)namespaceIndex));
+                }
+            }
+            // Todo use a switch case here and error handling
+            foreach(MachineNode machineNode in this.publishedMachines)
+            {
+                int namespaceIndex = this.client.GetNamespaceTable().GetIndex(machineNode.NamespaceUrl);
+                if (machineNode.NodeIdType == "Numeric")
+                {
+                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
+                    this.machineNodes.Add(machineNode);
+                }
+                else if (machineNode.NodeIdType == "String")
+                {
+                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
+                    this.machineNodes.Add(machineNode);
                 }
             }
             this.doPublish();
@@ -290,6 +305,33 @@ namespace UmatiGateway.OPC{
                 throw;
             }
         }
+        public void publishOnlineMachinesMachineNode()
+        {
+            try
+            {
+                foreach (MachineNode machineNode in this.machineNodes)
+                {
+                    string MyTopic = this.mqttPrefix + "/" + this.clientId + "/" + "online/";
+                    MyTopic += machineNode.InstanceNamespace;
+                    MqttApplicationMessage applicationMessage = new MqttApplicationMessageBuilder()
+                    .WithTopic(MyTopic)
+                    .WithPayload("1")
+                    .Build();
+                    if (this.mqttClient != null)
+                    {
+                        _ = this.mqttClient.PublishAsync(applicationMessage, CancellationToken.None).Result;
+                    } else 
+                    {
+                        //ToDo Add Error Handling
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                throw;
+            }
+        }
         public bool publishBadList() {
             try {
                 string MyTopic = this.mqttPrefix + "/" + this.clientId + "/" + "bad_list/errors";
@@ -316,6 +358,50 @@ namespace UmatiGateway.OPC{
                 return true;
             } catch(Exception e) {
                 Console.WriteLine ("Unable to publish BadList", e.ToString());
+                throw;
+            }
+        }
+        public void PublishBadListMachineNodes()
+        {
+            try
+            {
+                string MyTopic = this.mqttPrefix + "/" + this.clientId + "/" + "bad_list/errors";
+                JArray machinesErrorArray = new JArray();
+                foreach (MachineNode machineNode in this.machineNodes)
+                {
+                    JObject machineErrorObject = new JObject();
+                    machineErrorObject.Add("Machine", machineNode.NodeIdString.ToString());
+                    JArray machineErrorArray = new JArray();
+                    foreach(KeyValuePair<NodeId, IList<string>> entry in machineNode.Errors)
+                    {
+                        JObject errorNode = new JObject();
+                        errorNode.Add("NodeId", entry.Value.ToString());
+                        JArray errorMessages = new JArray();
+                        foreach(string error in entry.Value)
+                        {
+                            errorMessages.Add(error);
+                        }
+                        errorNode.Add("Messages", errorMessages);
+                        machineErrorArray.Add(errorNode);
+                    }
+                    machineErrorObject.Add("Errors", machineErrorArray);
+                }
+                MqttApplicationMessage applicationMessage = new MqttApplicationMessageBuilder()
+                    .WithTopic(MyTopic)
+                    .WithPayload(machinesErrorArray.ToString())
+                    .Build();
+                if (this.mqttClient != null)
+                {
+                    _ = this.mqttClient.PublishAsync(applicationMessage, CancellationToken.None).Result;
+                }
+                else
+                {
+                    //TODO handling for this case
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine("Unable to publish BadList", e.ToString());
                 throw;
             }
         }
@@ -350,34 +436,35 @@ namespace UmatiGateway.OPC{
             }
         }
 
-
-        public void publishNode()
+        public void publishNodeMachineNodes()
         {
             try
             {
-                foreach (NodeId machine in this.onlineMachines)
+                foreach (MachineNode machineNode in this.machineNodes)
                 {
-                    if (machine != null)
+                    NodeId? machineNodeId = machineNode.ResolvedNodeId;
+                    if (machineNodeId != null)
                     {
                         JObject body = new JObject();
-                        createJSON(body, machine);
-                        Node? machineNode = this.client.ReadNode(machine);
-                        if (machineNode != null) {
-                            NodeId? typedefinition = this.client.BrowseTypeDefinition(machine);
+                        createJSON(body, machineNodeId, machineNode);
+                        Node? machine = this.client.ReadNode(machineNodeId);
+                        if (machine != null)
+                        {
+                            NodeId? typedefinition = this.client.BrowseTypeDefinition(machineNodeId);
                             if (typedefinition != null)
                             {
                                 Node? TypeDefinitionNode = this.client.ReadNode(typedefinition);
                                 if (TypeDefinitionNode != null)
                                 {
-                                    this.WriteMessage(body, this.getInstanceNsu(machine), TypeDefinitionNode.BrowseName.Name);
-                                    this.machine = body;
+                                    this.WriteMessage(body, this.getInstanceNsu(machineNodeId), TypeDefinitionNode.BrowseName.Name);
+                                    machineNode.Data = body;
                                 }
                             }
                         }
                     }
                 }
-                
-                
+
+
             }
             catch (Exception e)
             {
@@ -400,6 +487,23 @@ namespace UmatiGateway.OPC{
                 throw;
             }
         }
+
+        public void publishNodeAfterSubscriptionMachineNodes()
+        {
+            try
+            {
+                foreach(MachineNode machineNode in this.machineNodes)
+                {
+                    this.WriteMessage(machineNode.Data, machineNode.InstanceNamespace, machineNode.TypeBrowseName);
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.ToString());
+                throw;
+            }
+        }
+
         private JToken createJSON(NodeId nodeId)
         {
             JObject jObject = new JObject();
@@ -411,64 +515,24 @@ namespace UmatiGateway.OPC{
                     if (childNode.NodeClass == NodeClass.Variable)
                     {
                         object dataValue = getDataValueAsObject(nodeId);
-                        bool isProperty = false;
-                        bool shorten = false;
-                        NodeId? typeDefinition = this.client.BrowseTypeDefinition(nodeId);
-                        if (typeDefinition == VariableTypeIds.PropertyType)
+                        if (dataValue is JValue)
                         {
-                            isProperty = true;
-                        } else
-                        {
-                            if(shortenVariables)
-                            {
-                                List<NodeId> nodeIds = this.client.BrowseLocalNodeIds(nodeId, BrowseDirection.Forward, (int)NodeClass.Variable, ReferenceTypeIds.HierarchicalReferences, true);
-                                if(nodeIds.Count == 0)
-                                {
-                                    shorten = true;
-                                }
-                            }
+                            return (JValue)dataValue;
                         }
-                        if (true)
+                        else if (dataValue is JObject)
                         {
-                            if (dataValue is JValue)
-                            {
-                                return (JValue)dataValue;
-                            }
-                            else if (dataValue is JObject)
-                            {
-                                return (JObject)dataValue;
-                            }
-                            else if (dataValue is JArray)
-                            {
-                                return (JArray)dataValue;
-                            }
+                            return (JObject)dataValue;
                         }
-                        else
+                        else if (dataValue is JArray)
                         {
-                            JObject valueObject = new JObject();
-                            if (dataValue is JValue)
-                            {
-                                valueObject.Add("value", (JValue)dataValue);
-                            }
-                            else if (dataValue is JObject)
-                            {
-                                valueObject.Add("value", (JObject)dataValue);
-                            }
-                            else if (dataValue is JArray)
-                            {
-                                valueObject.Add("value", (JArray)dataValue);
-                            }
-                            //JObject childObject = new JObject();
-                            //createJSON(childObject, nodeId);
-                            //valueObject.Add("properties", childObject);
-                            return valueObject;
+                            return (JArray)dataValue;
                         }
                     }
                 }
             }
             return jObject;
         }
-        private void createJSON(JObject jObject, NodeId nodeId, NodeId? parent = null, bool subscribe = true)
+        private void createJSON(JObject jObject, NodeId nodeId, MachineNode? machineNode = null, NodeId? parent = null, bool subscribe = true)
         {
             // Check if for the Parent a PlaceholderRule applies
 
@@ -531,22 +595,17 @@ namespace UmatiGateway.OPC{
                             if (placeHolderObject == null)
                             {
                                 jObject.Add(browseName, childObject);
-                                if(subscribe)this.addKnownBrowsePath(child, childObject, nodeId);
+                                if(subscribe)this.addKnownBrowsePath(child, childObject, nodeId, machineNode);
                             }
                             else
                             {
                                 childObject.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                 placeHolderObject.Add(browseName, childObject);
-                                if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId);
+                                if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId, machineNode);
                             }
                             break;
                         case NodeClass.Variable:
                             JToken dataValue = getDataValueAsObject(child);
-                            /*if (!subscriptions.ContainsKey(child))
-                            {
-                                uint subscription = this.client.SubscribeToDataChanges(child, this.updateDataValue);
-                                this.subscriptions.Add(child, new MqttSubscription(child, jObject, browseName, subscription));
-                            }*/
                             bool isProperty = false;
                             bool shorten = false;
 
@@ -572,13 +631,13 @@ namespace UmatiGateway.OPC{
                                     if (placeHolderObject == null)
                                     {
                                         jObject.Add(browseName, (JValue)dataValue);
-                                        if (subscribe) this.addKnownBrowsePath(child, (JValue) dataValue, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, (JValue) dataValue, nodeId, machineNode);
                                     }
                                     else
                                     {
                                         childObject.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                         placeHolderObject.Add(browseName, childObject);
-                                        if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, childObject, nodeId, machineNode);
 
                                     }
                                 }
@@ -587,7 +646,7 @@ namespace UmatiGateway.OPC{
                                     if (placeHolderObject == null)
                                     {
                                         jObject.Add(browseName, (JObject)dataValue);
-                                        if (subscribe) this.addKnownBrowsePath(child, (JObject)dataValue, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, (JObject)dataValue, nodeId, machineNode);
 
                                     }
                                     else
@@ -595,7 +654,7 @@ namespace UmatiGateway.OPC{
                                         JObject dv = (JObject)dataValue;
                                         dv.Add("$TypeDefinition", this.getInstanceNsu(typeDefinition, false));
                                         placeHolderObject.Add(browseName, dv);
-                                        if (subscribe) this.addKnownBrowsePath(child, dv, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, dv, nodeId, machineNode);
 
                                     }
                                 }
@@ -604,13 +663,13 @@ namespace UmatiGateway.OPC{
                                     if (placeHolderObject == null)
                                     {
                                         jObject.Add(browseName, (JArray)dataValue);
-                                        if (subscribe) this.addKnownBrowsePath(child, (JArray)dataValue, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, (JArray)dataValue, nodeId, machineNode);
                                     }
                                     else
                                     {
                                         JArray array = (JArray)dataValue;
                                         placeHolderObject.Add(browseName, array);
-                                        if (subscribe) this.addKnownBrowsePath(child, array, nodeId);
+                                        if (subscribe) this.addKnownBrowsePath(child, array, nodeId, machineNode);
 
                                     }
                                 }
@@ -630,17 +689,17 @@ namespace UmatiGateway.OPC{
                                 if (dataValue is JValue)
                                 {
                                     valueObject.Add("value", (JValue)dataValue);
-                                    if (subscribe) this.addKnownBrowsePath(child, (JValue)dataValue, nodeId);
+                                    if (subscribe) this.addKnownBrowsePath(child, (JValue)dataValue, nodeId, machineNode);
                                 }
                                 else if (dataValue is JObject)
                                 {
                                     valueObject.Add("value", (JObject)dataValue);
-                                    if (subscribe) this.addKnownBrowsePath(child, (JObject)dataValue, nodeId);
+                                    if (subscribe) this.addKnownBrowsePath(child, (JObject)dataValue, nodeId, machineNode);
                                 }
                                 else if (dataValue is JArray)
                                 {
                                     valueObject.Add("value", (JArray)dataValue);
-                                    if (subscribe) this.addKnownBrowsePath(child, (JArray)dataValue, nodeId);
+                                    if (subscribe) this.addKnownBrowsePath(child, (JArray)dataValue, nodeId, machineNode);
                                 }
                                 valueObject.Add("properties", childObject);
 
@@ -648,9 +707,7 @@ namespace UmatiGateway.OPC{
                             break;
                         default: Console.WriteLine($"Unexpected NodeClass Detected! {childNodeClass}"); break;
                     }
-                    createJSON(childObject, child, nodeId);
-                    
-                    //Console.WriteLine(childObject.Path);
+                    createJSON(childObject, child, machineNode, nodeId);
                 }
             }
         }
@@ -686,24 +743,50 @@ namespace UmatiGateway.OPC{
             return optionalMandatoryPlaceholders;
         }
 
-        private void addKnownBrowsePath(NodeId childNodeId, JToken childObject, NodeId? ParentId)
+        private void addKnownBrowsePath(NodeId childNodeId, JToken childObject, NodeId? ParentId, MachineNode? machineNode = null)
         {
-            if(!this.knownBrowsePaths.ContainsKey(childNodeId))
+            if (machineNode == null)
             {
-                PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(childNodeId, ParentId);
-                publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
-                this.knownBrowsePaths.Add(childNodeId, publishedBrowsePaths);
+                if (!this.knownBrowsePaths.ContainsKey(childNodeId))
+                {
+                    PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(childNodeId, ParentId);
+                    publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                    this.knownBrowsePaths.Add(childNodeId, publishedBrowsePaths);
+                }
+                else
+                {
+                    PublishedBrowsePaths? publishedBrowsePaths;
+                    if (this.knownBrowsePaths.TryGetValue(childNodeId, out publishedBrowsePaths))
+                    {
+                        if (publishedBrowsePaths != null)
+                        {
+                            if (!publishedBrowsePaths.browsePaths.ContainsKey(childObject.Path))
+                            {
+                                publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                            }
+                        }
+                    }
+                }
             }
             else
             {
-                PublishedBrowsePaths? publishedBrowsePaths;
-                if (this.knownBrowsePaths.TryGetValue(childNodeId, out publishedBrowsePaths))
+                if (!machineNode.KnownBrowsePaths.ContainsKey(childNodeId))
                 {
-                    if (publishedBrowsePaths != null)
+                    PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(childNodeId, ParentId);
+                    publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                    machineNode.KnownBrowsePaths.Add(childNodeId, publishedBrowsePaths);
+                }
+                else
+                {
+                    PublishedBrowsePaths? publishedBrowsePaths;
+                    if (machineNode.KnownBrowsePaths.TryGetValue(childNodeId, out publishedBrowsePaths))
                     {
-                        if (!publishedBrowsePaths.browsePaths.ContainsKey(childObject.Path))
+                        if (publishedBrowsePaths != null)
                         {
-                            publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                            if (!publishedBrowsePaths.browsePaths.ContainsKey(childObject.Path))
+                            {
+                                publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                            }
                         }
                     }
                 }
@@ -721,16 +804,17 @@ namespace UmatiGateway.OPC{
                 throw;
             }
         }
-        public void publishIdentification() {
+        public void publishIdentificationMachineNodes()
+        {
             try
             {
                 JArray identificationArray = new JArray();
-                foreach (NodeId machine in this.onlineMachines)
+                foreach (MachineNode machineNode in this.machineNodes)
                 {
-                    if (machine != null)
+                    if (machineNode != null && machineNode.ResolvedNodeId != null)
                     {
                         {
-                            List<NodeId> identificationNodes = this.client.BrowseLocalNodeIds(machine, BrowseDirection.Forward, (int)NodeClass.Object, ReferenceTypeIds.HierarchicalReferences, true, ObjectTypeIds.FolderType);
+                            List<NodeId> identificationNodes = this.client.BrowseLocalNodeIds(machineNode.ResolvedNodeId, BrowseDirection.Forward, (int)NodeClass.Object, ReferenceTypeIds.HierarchicalReferences, true, ObjectTypeIds.FolderType);
                             foreach (NodeId child in identificationNodes)
                             {
                                 Node? childNode = this.client.ReadNode(child);
@@ -740,17 +824,17 @@ namespace UmatiGateway.OPC{
                                     {
                                         JObject data = new JObject();
                                         JObject ident = new JObject();
-                                        createJSON(ident, child, null, false);
+                                        createJSON(ident, child, machineNode, null, false);
                                         data.Add("Data", ident);
-                                        data.Add("MachineId", this.InstanceNSU);
+                                        data.Add("MachineId", machineNode.InstanceNamespace);
                                         data.Add("ParentId", "nsu=http:_2F_2Fopcfoundation.org_2FUA_2FMachinery_2F;i=1001");
-                                        data.Add("Topic", this.mqttPrefix + "/" + this.clientId + "/" + this.TypeBrowseName + "/" + this.InstanceNSU);
-                                        data.Add("TypeDefinition", this.TypeBrowseName);
+                                        data.Add("Topic", this.mqttPrefix + "/" + this.clientId + "/" + machineNode.TypeBrowseName + "/" + machineNode.InstanceNamespace);
+                                        data.Add("TypeDefinition", machineNode.TypeBrowseName);
                                         identificationArray.Add(data);
                                     }
                                 }
                             }
-                            this.WriteIdentification(identificationArray, this.InstanceNSU, this.TypeBrowseName);
+                            this.WriteIdentification(identificationArray, machineNode.InstanceNamespace, machineNode.TypeBrowseName);
                             this.IdentificationArray = identificationArray;
                         }
                     }
@@ -760,7 +844,7 @@ namespace UmatiGateway.OPC{
             {
                 Console.WriteLine(e.ToString());
                 throw;
-            } 
+            }
         }
 
         /// <summary>
@@ -1432,16 +1516,16 @@ namespace UmatiGateway.OPC{
                             ReadInProgress = true;
                             Console.WriteLine("Read InstanceNsu and BrowseName");
                             this.ReadInstanceNsuAndBrowseName();
-                            Console.WriteLine("Publish BadList");
-                            this.publishBadList();
-                            Console.WriteLine("Publish Bad List finish.");
+                            Console.WriteLine("Publish BadList MachineNodes");
+                            this.PublishBadListMachineNodes();
+                            Console.WriteLine("Publish BadList MachineNodes.");
                             Console.WriteLine("Publish Client Online");
                             this.publishClientOnline();
                             Console.WriteLine("Publish Client Online finish.");
                             Console.WriteLine("Publish Maschine");
-                            this.publishNode();
+                            this.publishNodeMachineNodes();
                             Console.WriteLine("Publish Maschine finished.");
-                            this.publishNodeAfterSubscription();
+                            this.publishNodeAfterSubscriptionMachineNodes();
                             firstReadFinished = true;
                             ReadInProgress = false;
                             foreach (KeyValuePair<NodeId, PublishedBrowsePaths> entry in this.knownBrowsePaths)
@@ -1449,38 +1533,33 @@ namespace UmatiGateway.OPC{
                                 Console.Write(entry.Value.ToString());
                                 this.client.SubscribeToDataChanges(entry.Key,this.updateDataValue);
                             }
-                            Console.WriteLine("Publish Online Machines");
-                            this.publishOnlineMachines();
-                            Console.WriteLine("Publish Online Machines finish.");
-                            Console.WriteLine("Publish Identification");
-                            this.publishIdentification();
-                            Console.WriteLine("Publish Identification finish.");
+                            Console.WriteLine("Publish Online Machines Machine Node");
+                            this.publishOnlineMachinesMachineNode();
+                            Console.WriteLine("Publish Online Machines Machine Node finish.");
+                            Console.WriteLine("Publish Identification Machine Node");
+                            this.publishIdentificationMachineNodes();
+                            Console.WriteLine("Publish Identification Machine Node finish.");
                         }
                     } 
                     else
                     {
                         //Detect OPC disconnect
                         _ = this.client.ReadNode(ObjectIds.Server);
-                        Console.WriteLine("Publish BadList");
-                        this.publishBadList();
-                        Console.WriteLine("Publish Bad List finish.");
+                        Console.WriteLine("Publish BadList Machine Nodes");
+                        this.PublishBadListMachineNodes();
+                        Console.WriteLine("Publish Bad List Maschine Nodes finish.");
                         Console.WriteLine("Publish Client Online");
                         this.publishClientOnline();
                         Console.WriteLine("Publish Client Online finish.");
-                        Console.WriteLine("Publish Online Machines");
-                        this.publishOnlineMachines();
-                        Console.WriteLine("Publish Online Machines finish.");
+                        Console.WriteLine("Publish Online Machines MachineNode");
+                        this.publishOnlineMachinesMachineNode();
+                        Console.WriteLine("Publish Online Machines Machine Node finish.");
                         Console.WriteLine("Publish Identification Object");
                         this.publishIdentificationObject();
-                        Console.WriteLine("Publish Identification Object finish.");
-                        Console.WriteLine("Publish Maschine Object");
-                        this.publishNodeAfterSubscription();
-                        Console.WriteLine("Publish Maschine Object finished.");
-
-                        foreach(KeyValuePair<NodeId, PublishedBrowsePaths> entry in this.knownBrowsePaths)
-                        {
-                            Console.Write(entry.Value.ToString());
-                        }
+                        Console.WriteLine("Publish Identification Object");
+                        Console.WriteLine("Publish Maschine Object Machine Nodes");
+                        this.publishNodeAfterSubscriptionMachineNodes();
+                        Console.WriteLine("Publish Maschine Object Machine Nodes finished.");
                     }
 
                 }
@@ -1554,8 +1633,23 @@ namespace UmatiGateway.OPC{
                         }
                     }
                 }
-
-
+                foreach (MachineNode machineNode in this.publishedMachines)
+                {
+                    NodeId? machineNodeId = machineNode.ResolvedNodeId;
+                    if (machineNodeId != null)
+                    {
+                        NodeId? typedefinitionNodeId = this.client.BrowseTypeDefinition(machineNodeId);
+                        if (typedefinitionNodeId != null)
+                        {
+                            Node? typeDefinitionNode = this.client.ReadNode(typedefinitionNodeId);
+                            if (typeDefinitionNode != null)
+                            {
+                                machineNode.InstanceNamespace = this.getInstanceNsu(machineNodeId);
+                                machineNode.TypeBrowseName = typeDefinitionNode.BrowseName.Name;
+                            }
+                        }
+                    }
+                }
             }
             catch (Exception e)
             {
@@ -1567,44 +1661,26 @@ namespace UmatiGateway.OPC{
 
         private void updateDataValue(MonitoredItem monitoredItem, MonitoredItemNotificationEventArgs monitoredItemsArgs)
         {
-            
-            if (this.knownBrowsePaths.TryGetValue(monitoredItem.ResolvedNodeId, out PublishedBrowsePaths? path))
+            foreach(MachineNode machineNode in this.machineNodes)
             {
-                if (path != null)
+                Dictionary<NodeId, PublishedBrowsePaths> machineBrowsePaths = machineNode.KnownBrowsePaths;
+                if (machineBrowsePaths.TryGetValue(monitoredItem.ResolvedNodeId, out PublishedBrowsePaths? path))
                 {
-                    foreach (KeyValuePair<string, JToken> entry in path.browsePaths)
+                    if (path != null)
                     {
-                        JToken? affectedObject = this.machine.SelectToken(entry.Key);
-                        if (affectedObject != null)
+                        foreach (KeyValuePair<string, JToken> entry in path.browsePaths)
                         {
-                            JToken replaceToken = this.createJSON(monitoredItem.ResolvedNodeId);
-                            affectedObject.Replace(replaceToken);
+                            JToken? affectedObject = machineNode.Data.SelectToken(entry.Key);
+                            if (affectedObject != null)
+                            {
+                                JToken replaceToken = this.createJSON(monitoredItem.ResolvedNodeId);
+                                affectedObject.Replace(replaceToken);
+                            }
                         }
                     }
                 }
-                this.publishNodeAfterSubscription();
             }
-            /*if(this.subscriptions.TryGetValue(monitoredItem.ResolvedNodeId, out MqttSubscription? subscription))
-            {
-                if(subscription != null && monitoredItem != null)
-                {
-                    string completePath = subscription.parent.Path + "." + subscription.browseName;
-                    Console.WriteLine("Changed Value for:" + completePath);
-                    JToken? token = this.machine.SelectToken(completePath, errorWhenNoMatch: false);
-                    if(token != null)
-                    {
-                        JToken replaceToken = this.createJSON(monitoredItem.ResolvedNodeId);
-                        token.Replace(replaceToken);
-                        this.publishNodeAfterSubscription();
-                    } else
-                    {
-                        //Console.WriteLine("Not Found token " + completePath);
-                    }
-                }
-            } else
-            {
-                Console.WriteLine("Unable to find subscription: " + monitoredItem.ResolvedNodeId);
-            }*/
+            this.publishNodeAfterSubscriptionMachineNodes();
         }
 
         // Helper Methods
@@ -1678,24 +1754,28 @@ namespace UmatiGateway.OPC{
         }
         public void updateNode(NodeId affectedNode)
         {
-            if (this.knownBrowsePaths.TryGetValue(affectedNode, out PublishedBrowsePaths? path))
+            foreach (MachineNode machineNode in this.machineNodes)
             {
-                if (path != null)
+                Dictionary<NodeId, PublishedBrowsePaths> machineBrowsePaths = machineNode.KnownBrowsePaths;
+                if (machineBrowsePaths.TryGetValue(affectedNode, out PublishedBrowsePaths? path))
                 {
-                    foreach(KeyValuePair<string, JToken> entry in path.browsePaths)
+                    if (path != null)
                     {
-                        JToken? affectedObject = this.machine.SelectToken(entry.Key);
-                        if (affectedObject != null)
+                        foreach (KeyValuePair<string, JToken> entry in path.browsePaths)
                         {
-                            JObject jObject = new JObject();
-                  
-                            this.createJSON(jObject, path.NodeId, path.ParentId);
-                            affectedObject.Replace(jObject);
+                            JToken? affectedObject = machineNode.Data.SelectToken(entry.Key);
+                            if (affectedObject != null)
+                            {
+                                JObject jObject = new JObject();
+
+                                this.createJSON(jObject, path.NodeId, machineNode, path.ParentId);
+                                affectedObject.Replace(jObject);
+                            }
                         }
                     }
                 }
-                this.publishNodeAfterSubscription();
             }
+            this.publishNodeAfterSubscriptionMachineNodes();
         }
         void OpcUaEventListener.ModelChangeEvent(NodeId affectedNode)
         {
@@ -1737,5 +1817,24 @@ namespace UmatiGateway.OPC{
             return returnString;
         }
     }
+    public class MachineNode
+    {
+        public string NodeIdString { get; set; }
+        public JObject Data { get; set; } = new JObject();
+        public Dictionary<NodeId, IList<string>> Errors { get; set; } = new Dictionary<NodeId, IList<string>>();
+        public JObject Identification { get; set; } = new JObject();
+        public string InstanceNamespace { get; set; } = "";
+        public string NamespaceUrl { get; set; }
+        public string TypeBrowseName { get; set; } = "";
+        public string NodeIdType { get; set; } = "";
+        
+        public NodeId? ResolvedNodeId { get; set; }
+        public Dictionary<NodeId, PublishedBrowsePaths> KnownBrowsePaths { get; set; } = new Dictionary<NodeId, PublishedBrowsePaths>();
 
+        public MachineNode(string machineNodeId, String namespaceUrl)
+        {
+            this.NodeIdString = machineNodeId;
+            this.NamespaceUrl = namespaceUrl;
+        }
+    }
 }
