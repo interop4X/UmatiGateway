@@ -196,6 +196,7 @@ namespace UmatiGateway.OPC
                     this.MqttProvider.publishedNodes.Add(publishedNode);
                     //Publish to machine nodes
                     MachineNode machineNode = new MachineNode(stringId, this.GetNamespaceTable().GetString(nodeId.NamespaceIndex));
+                    machineNode.NodeIdType = nodeId.IdType.ToString();
                     this.MqttProvider.publishedMachines.Add(machineNode);
                 }
             }

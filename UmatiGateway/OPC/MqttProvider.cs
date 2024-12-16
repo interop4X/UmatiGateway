@@ -117,20 +117,7 @@ namespace UmatiGateway.OPC{
                 }
             }
             // Todo use a switch case here and error handling
-            foreach(MachineNode machineNode in this.publishedMachines)
-            {
-                int namespaceIndex = this.client.GetNamespaceTable().GetIndex(machineNode.NamespaceUrl);
-                if (machineNode.NodeIdType == "Numeric")
-                {
-                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
-                    this.machineNodes.Add(machineNode);
-                }
-                else if (machineNode.NodeIdType == "String")
-                {
-                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
-                    this.machineNodes.Add(machineNode);
-                }
-            }
+ 
             this.doPublish();
             this.client.ConnectEvents(this);
             aTimer.Start();
@@ -774,6 +761,7 @@ namespace UmatiGateway.OPC{
                 {
                     PublishedBrowsePaths publishedBrowsePaths = new PublishedBrowsePaths(childNodeId, ParentId);
                     publishedBrowsePaths.browsePaths.Add(childObject.Path, childObject);
+                    Console.WriteLine(childObject.Path);
                     machineNode.KnownBrowsePaths.Add(childNodeId, publishedBrowsePaths);
                 }
                 else
@@ -1514,6 +1502,22 @@ namespace UmatiGateway.OPC{
                         if (!ReadInProgress)
                         {
                             ReadInProgress = true;
+                            this.machineNodes.Clear();
+                            foreach (MachineNode machineNode in this.publishedMachines)
+                            {
+                                int namespaceIndex = this.client.GetNamespaceTable().GetIndex(machineNode.NamespaceUrl);
+                                if (machineNode.NodeIdType == "Numeric")
+                                {
+                                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
+                                    this.machineNodes.Add(machineNode);
+                                }
+                                else if (machineNode.NodeIdType == "String")
+                                {
+                                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
+                                    this.machineNodes.Add(machineNode);
+                                }
+                            }
+                            
                             Console.WriteLine("Read InstanceNsu and BrowseName");
                             this.ReadInstanceNsuAndBrowseName();
                             Console.WriteLine("Publish BadList MachineNodes");
@@ -1526,20 +1530,24 @@ namespace UmatiGateway.OPC{
                             this.publishNodeMachineNodes();
                             Console.WriteLine("Publish Maschine finished.");
                             this.publishNodeAfterSubscriptionMachineNodes();
-                            firstReadFinished = true;
-                            ReadInProgress = false;
-                            foreach (KeyValuePair<NodeId, PublishedBrowsePaths> entry in this.knownBrowsePaths)
-                            {
-                                Console.Write(entry.Value.ToString());
-                                this.client.SubscribeToDataChanges(entry.Key,this.updateDataValue);
-                            }
                             Console.WriteLine("Publish Online Machines Machine Node");
                             this.publishOnlineMachinesMachineNode();
                             Console.WriteLine("Publish Online Machines Machine Node finish.");
                             Console.WriteLine("Publish Identification Machine Node");
                             this.publishIdentificationMachineNodes();
                             Console.WriteLine("Publish Identification Machine Node finish.");
+                            foreach (MachineNode machineNode in this.machineNodes)
+                            {
+                                foreach (KeyValuePair<NodeId, PublishedBrowsePaths> entry in machineNode.KnownBrowsePaths)
+                                {
+                                    Console.Write(entry.Value.ToString());
+                                    this.client.SubscribeToDataChanges(entry.Key, this.updateDataValue);
+                                }
+                            }
+                            ReadInProgress = false;
+                            firstReadFinished = true;
                         }
+
                     } 
                     else
                     {
