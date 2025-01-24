@@ -210,11 +210,6 @@ namespace UmatiGateway.OPC
             if (this.mqttClient != null)
             {
                 MqttClientOptions mqttClientOptions;
-                int? port = null;
-                if (this.connectionPort != null)
-                {
-                    port = Int32.Parse(this.connectionPort);
-                }
                 if (this.connectionString != null)
                 {
 
