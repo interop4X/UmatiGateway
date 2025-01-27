@@ -1484,7 +1484,7 @@ namespace UmatiGateway.OPC
                                 }
                                 else if (machineNode.NodeIdType == "String")
                                 {
-                                    machineNode.ResolvedNodeId = new NodeId(Convert.ToUInt32(machineNode.NodeIdString), (ushort)namespaceIndex);
+                                    machineNode.ResolvedNodeId = new NodeId(machineNode.NodeIdString, (ushort)namespaceIndex);
                                     this.machineNodes.Add(machineNode);
                                 }
                             }
